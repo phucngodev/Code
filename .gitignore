@@ -1,0 +1,11 @@
+/Vendor/GhosttyKit.xcframework/
+/Vendor/GhosttyResources/
+/code.xcodeproj/
+/build/
+/dist/
+/DerivedData/
+xcuserdata/
+.DS_Store
+/Vendor/GhosttyKit.stamp
+__pycache__/
+*~lock~

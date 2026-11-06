@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+# A re-pushed tag makes the previous run on it obsolete.
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Publishing a release writes to the repo; the cache service uses the Actions
+# runtime token, so no personal access token is needed.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish
+    # GitHub's macOS 26 image ships Xcode 26.x, which is what Ghostty v1.4
+    # builds against. Change this label if you need a different macOS.
+    runs-on: macos-26
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # The tag history is what stamp-version.sh reads the version from.
+          fetch-depth: 0
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          # Must match build.zig.zon's minimum_zig_version in the submodule.
+          version: 0.17.0
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Toolchain versions
+        run: |
+          xcodebuild -version
+          zig version
+          xcodegen --version
+
+      - name: Resolve ghostty revision
+        id: ghostty
+        run: echo "sha=$(git rev-parse HEAD:Vendor/ghostty)" >> "$GITHUB_OUTPUT"
+
+      # libghostty takes several minutes to compile, so reuse the built
+      # framework until the pinned ghostty commit or its build script changes.
+      - name: Restore GhosttyKit
+        id: cache-ghosttykit
+        uses: actions/cache@v4
+        with:
+          path: |
+            Vendor/GhosttyKit.xcframework
+            Vendor/GhosttyResources
+            Vendor/GhosttyKit.stamp
+          key: ghosttykit-${{ runner.os }}-${{ steps.ghostty.outputs.sha }}-${{ hashFiles('scripts/build-ghosttykit.sh', 'scripts/ghosttykit-stamp.sh') }}
+
+      - name: Checkout ghostty submodule
+        if: steps.cache-ghosttykit.outputs.cache-hit != 'true'
+        run: git submodule update --init --depth 1 -- Vendor/ghostty
+
+      - name: Build libghostty
+        if: steps.cache-ghosttykit.outputs.cache-hit != 'true'
+        run: ./scripts/build-ghosttykit.sh
+
+      - name: Build and package
+        env:
+          CODE_SIGNING_ALLOWED: "NO"
+          CODE_SIGNING_REQUIRED: "NO"
+        run: ./scripts/build-release.sh
+
+      # - name: Test
+      #   run: >-
+      #     xcodebuild -scheme code
+      #     -derivedDataPath build
+      #     -destination 'platform=macOS'
+      #     CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
+      #     test
+
+      # These DMGs carry only the ad-hoc signature a runner can make, so they
+      # are not notarized. A tag can hold either this release or the notarized
+      # one scripts/release.py publishes, never both.
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          prerelease=""
+          case "$tag" in
+            *-rc.*) prerelease=--prerelease ;;
+          esac
+          gh release create "$tag" dist/*.dmg \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Code ${version}" \
+            --generate-notes \
+            ${prerelease:+"$prerelease"}
