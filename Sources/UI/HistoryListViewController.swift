@@ -15,7 +15,7 @@ final class HistoryListViewController: NSViewController, NSTableViewDataSource, 
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
     private let searchField = NSSearchField()
-    private let headerLabel = NSTextField(labelWithString: "History")
+    private let headerLabel = NSTextField(labelWithString: "Sessions")
     private let placeholderLabel = NSTextField(labelWithString: "No saved sessions")
     private var sessions: [HistorySession] = []
     private var shown: [HistorySession] = []

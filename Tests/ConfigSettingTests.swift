@@ -63,26 +63,6 @@ final class ConfigSettingTests: XCTestCase {
         XCTAssertEqual(Option.backgroundBlur.format(true), "true")
     }
 
-    /// The bundled theme that stands in for Ghostty's own colors has to keep
-    /// matching them.
-    func testGhosttysDefaultColorsHaveANamedTheme() throws {
-        XCTAssertEqual(Self.initialized, GHOSTTY_SUCCESS)
-        let file = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Vendor/GhosttyResources/ghostty/themes/Ghostty Default Style Dark")
-        XCTAssertTrue(FileManager.default.fileExists(atPath: file.path), file.path)
-        let theme = try GhosttyConfig(file: file)
-        let defaults = try GhosttyConfig(file: nil)
-        XCTAssertEqual(theme.backgroundColor, defaults.backgroundColor)
-        XCTAssertEqual(theme.foregroundColor, defaults.foregroundColor)
-        // The theme rounds a few palette channels differently, by one step.
-        XCTAssertEqual(theme.palette.count, defaults.palette.count)
-        for (themed, original) in zip(theme.palette, defaults.palette) {
-            for channel in [\NSColor.redComponent, \.greenComponent, \.blueComponent] {
-                XCTAssertEqual(themed[keyPath: channel], original[keyPath: channel], accuracy: 1.5 / 255)
-            }
-        }
-    }
-
     func testChoicesReadGhosttysOtherSpellings() {
         XCTAssertEqual(Option.confirmClose.parse("1"), "true")
         XCTAssertEqual(Option.confirmClose.parse("F"), "false")

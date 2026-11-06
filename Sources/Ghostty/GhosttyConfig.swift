@@ -140,7 +140,9 @@ final class GhosttyConfig {
     }
 
     private func read<T>(_ key: String, into result: inout T) -> Bool {
-        key.withCString { ghostty_config_get(cValue, &result, $0, UInt(key.utf8.count)) }
+        withUnsafeMutableBytes(of: &result) { bytes in
+            key.withCString { ghostty_config_get(cValue, bytes.baseAddress, $0, UInt(key.utf8.count)) }
+        }
     }
 
     var diagnostics: [String] {

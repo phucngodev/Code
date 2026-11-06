@@ -15,9 +15,10 @@ struct SidebarAgentRow: Equatable {
 }
 
 enum SidebarAgentRows {
-    /// Every pane of the workspace's tabs, in sidebar order. The agent name
-    /// and indicator are asked per terminal id, so a terminal without one is
-    /// still listed.
+    /// Every terminal of the workspace that is running an agent, in sidebar
+    /// order. Terminals without one are left out, so a row appears when an
+    /// agent starts and goes when it ends. A row's location still names the
+    /// pane it sits in, even when the panes beside it are left out.
     static func rows<Leaf: PaneLeaf>(
         in workspace: WorkspaceModel<Leaf>,
         agent: (UUID) -> String?,
@@ -42,6 +43,6 @@ enum SidebarAgentRows {
                     location: location,
                     indicator: indicator(leaf.id))
             }
-        }
+        }.filter { $0.agent != nil }
     }
 }

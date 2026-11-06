@@ -265,7 +265,9 @@ final class MainWindowController: NSWindowController {
 
     func agentsDidChange(in workspace: Workspace, tab: TerminalTab, surface: UUID) {
         sidebar.updateAgentStatus(for: workspace)
-        sidebar.updateTerminalIndicator(for: surface)
+        // A terminal that just gained or lost an agent changes the rows, not
+        // only their glyphs, so the list is rebuilt rather than patched.
+        sidebar.reloadAgents()
         terminalArea.updateAgentIndicator(for: tab)
         // The bell counts an agent that is waiting, which changes with the
         // indicator rather than with unread alone.

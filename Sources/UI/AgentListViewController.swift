@@ -14,7 +14,7 @@ final class AgentListViewController: NSViewController, NSTableViewDataSource, NS
     private let store: WorkspaceStore
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
-    private let headerLabel = NSTextField(labelWithString: "Tabs & Panes & Agents")
+    private let headerLabel = NSTextField(labelWithString: "Agents")
     private let placeholderLabel = NSTextField(labelWithString: "No running agents")
     private var rows: [SidebarAgentRow] = []
 
@@ -103,16 +103,6 @@ final class AgentListViewController: NSViewController, NSTableViewDataSource, NS
         placeholderLabel.isHidden = !empty
         scrollView.isHidden = empty
         selectFocusedTerminal()
-    }
-
-    /// Agents change state far more often than rows need rebuilding, so only
-    /// the changed row is updated.
-    func updateIndicator(for terminal: UUID) {
-        guard let index = rows.firstIndex(where: { $0.terminal == terminal }) else { return }
-        rows[index].indicator = agentIndicator(terminal)
-        rows[index].agent = agentName(terminal)
-        guard let cell = tableView.view(atColumn: 0, row: index, makeIfNecessary: false) as? AgentRowCellView else { return }
-        cell.row = rows[index]
     }
 
     private func selectFocusedTerminal() {

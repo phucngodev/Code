@@ -219,10 +219,6 @@ final class SidebarViewController: NSViewController, NSSplitViewDelegate, Sideba
         content?.workspaceList.refreshAgentState()
     }
 
-    func updateTerminalIndicator(for terminal: UUID) {
-        content?.agentList.updateIndicator(for: terminal)
-    }
-
     // MARK: Divider
 
     /// The saved dividers are pane heights from the top of the split view. They

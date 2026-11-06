@@ -22,6 +22,7 @@ for arch in "${ARCHS[@]}"; do
   # A CI runner has no signing identity and turns signing off through these.
   xcodebuild -scheme code -configuration Release \
     -derivedDataPath "$BUILD/$arch" \
+    -destination "platform=macOS,arch=$arch" \
     ARCHS="$arch" ONLY_ACTIVE_ARCH=NO \
     "CODE_SIGNING_ALLOWED=${CODE_SIGNING_ALLOWED:-YES}" \
     "CODE_SIGNING_REQUIRED=${CODE_SIGNING_REQUIRED:-YES}" \

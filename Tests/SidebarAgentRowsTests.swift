@@ -1,7 +1,7 @@
 import XCTest
 
 final class SidebarAgentRowsTests: XCTestCase {
-    func testRowsListEveryPaneWithItsAgentAndIndicator() {
+    func testRowsListOnlyTerminalsRunningAnAgent() {
         let a = FakeLeaf("a", workingDirectory: "/tmp/a")
         let b = FakeLeaf("b", workingDirectory: "/tmp/b")
         let workspace = WorkspaceModel<FakeLeaf>()
@@ -17,28 +17,41 @@ final class SidebarAgentRowsTests: XCTestCase {
                                          agent: { agents[$0] },
                                          indicator: { indicators[$0] })
 
-        XCTAssertEqual(rows.map(\.terminal), [a.id, b.id, c.id])
+        // The third terminal runs no agent, so it is left out.
+        XCTAssertEqual(rows.map(\.terminal), [a.id, b.id])
         XCTAssertEqual(rows[0].agent, "pi")
         XCTAssertEqual(rows[0].indicator, .waiting)
         XCTAssertEqual(rows[0].title, "a")
         XCTAssertEqual(rows[1].agent, "claude")
         XCTAssertEqual(rows[1].indicator, .working)
-        // A split names its panes; a later single-pane tab is named by number.
         XCTAssertEqual(rows[0].location, "Tab 1 › Left")
         XCTAssertEqual(rows[1].location, "Tab 1 › Right")
-        XCTAssertEqual(rows[2].location, "Tab 2")
     }
 
-    func testATerminalWithoutAnAgentIsStillListed() {
+    func testATerminalWithoutAnAgentIsNotListed() {
         let leaf = FakeLeaf("shell")
         let workspace = WorkspaceModel<FakeLeaf>()
         workspace.add(TestTab(leaf: leaf))
 
         let rows = SidebarAgentRows.rows(in: workspace, agent: { _ in nil }, indicator: { _ in nil })
 
-        XCTAssertEqual(rows.count, 1)
-        XCTAssertNil(rows[0].agent)
-        XCTAssertNil(rows[0].indicator)
+        XCTAssertTrue(rows.isEmpty)
+    }
+
+    func testAnAgentKeepsTheLocationOfItsPane() {
+        let a = FakeLeaf("a"), b = FakeLeaf("b")
+        let workspace = WorkspaceModel<FakeLeaf>()
+        let tab = TestTab(leaf: a)
+        tab.panes.split(a, direction: .right, with: b)
+        workspace.add(tab)
+
+        let rows = SidebarAgentRows.rows(in: workspace,
+                                         agent: { $0 == b.id ? "pi" : nil },
+                                         indicator: { _ in .working })
+
+        // The pane beside it is not listed, but the location still names it.
+        XCTAssertEqual(rows.map(\.terminal), [b.id])
+        XCTAssertEqual(rows[0].location, "Tab 1 › Right")
     }
 
     func testSingleTerminalWorkspaceHasNoLocation() {

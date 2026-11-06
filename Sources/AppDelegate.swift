@@ -85,11 +85,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         agentSessions.onUpdate = { [weak self] update in
             self?.notify(update)
-            // A tab's sparkle follows whether an agent runs in it, which a
-            // session starting or ending changes without the indicator moving.
+            // A session starting or ending adds or removes a row in the agents
+            // list without the indicator moving, and changes whether a tab
+            // shows its sparkle.
             guard update.kind == .sessionStarted || update.kind == .sessionEnded,
                   let self, let (window, _) = self.surface(withID: update.surface) else { return }
-            MainActor.assumeIsolated { window.controller.terminalArea.reloadTabs() }
+            MainActor.assumeIsolated {
+                window.controller.sidebar.reloadAgents()
+                window.controller.terminalArea.reloadTabs()
+            }
         }
         agentSessions.onUnreadChange = { [weak self] in
             self?.windows.forEach {
