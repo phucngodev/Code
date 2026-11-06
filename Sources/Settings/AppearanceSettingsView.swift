@@ -9,10 +9,13 @@ struct AppearanceSettingsView: View {
     private var theme: Binding<String?> {
         Binding(
             get: {
-                let choice = ThemeChoice(store.values(for: Option.theme).last)
+                // No line is Code's default theme; an empty one is the user
+                // asking for Ghostty's own colors.
+                guard let value = store.document[Option.theme] else { return Themes.defaultTheme }
+                let choice = ThemeChoice(value)
                 return choice.light ?? choice.dark
             },
-            set: { name in store.setValues(name.map { [$0] } ?? [], for: Option.theme) })
+            set: { name in store.setValues(name.map { [$0] } ?? [""], for: Option.theme) })
     }
 
     private var fontFamily: Binding<String> {

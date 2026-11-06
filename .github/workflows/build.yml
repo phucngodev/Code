@@ -63,7 +63,7 @@ jobs:
             Vendor/GhosttyKit.xcframework
             Vendor/GhosttyResources
             Vendor/GhosttyKit.stamp
-          key: ghosttykit-${{ runner.os }}-${{ steps.ghostty.outputs.sha }}-${{ hashFiles('scripts/build-ghosttykit.sh', 'scripts/ghosttykit-stamp.sh') }}
+          key: ghosttykit-${{ runner.os }}-${{ steps.ghostty.outputs.sha }}-${{ hashFiles('scripts/build-ghosttykit.sh', 'scripts/ghosttykit-stamp.sh', 'themes/**') }}
 
       - name: Checkout ghostty submodule
         if: steps.cache-ghosttykit.outputs.cache-hit != 'true'

@@ -29,6 +29,8 @@ targets:
         type: folder
       - path: Vendor/GhosttyResources/ghostty
         type: folder
+      - path: Vendor/GhosttyResources/code-themes
+        type: folder
       - path: Resources/shell-integration
         type: folder
       - path: Resources/agents

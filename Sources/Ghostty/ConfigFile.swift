@@ -157,6 +157,9 @@ extension ConfigFile {
         for include in includes(of: document, at: url) {
             if let theme = include.document["theme"] { value = theme }
         }
+        // A config naming no theme gets Code's default. An empty theme is the
+        // user asking for Ghostty's own colors, which is left to libghostty.
+        if value == nil { value = Themes.defaultTheme }
         guard let value, let resolved = Themes.resolved(value, in: directories) else { return nil }
         let file = FileManager.default.temporaryDirectory.appendingPathComponent("code-theme-\(UUID().uuidString)")
         guard (try? "theme = \(resolved)\n".write(to: file, atomically: true, encoding: .utf8)) != nil else { return nil }

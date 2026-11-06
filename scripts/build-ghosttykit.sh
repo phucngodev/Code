@@ -27,6 +27,13 @@ mkdir -p "$ROOT/Vendor/GhosttyResources"
 cp -R "$GHOSTTY/macos/GhosttyKit.xcframework" "$ROOT/Vendor/"
 cp -R "$GHOSTTY/zig-out/share/terminfo" "$GHOSTTY/zig-out/share/ghostty" "$ROOT/Vendor/GhosttyResources/"
 
+# Ghostty ships 800+ themes; Code carries its own small set instead, so the
+# built-in ones are dropped rather than bundled for the picker to list.
+rm -rf "$ROOT/Vendor/GhosttyResources/ghostty/themes"
+
+# Code's themes are staged together under their own name.
+cp -R "$ROOT/themes" "$ROOT/Vendor/GhosttyResources/code-themes"
+
 # Xcode's linker can miss symbols in the copied universal archive until its
 # symbol index is rebuilt.
 xcrun ranlib "$ROOT/Vendor/GhosttyKit.xcframework/macos-arm64_x86_64/ghostty-internal.a"

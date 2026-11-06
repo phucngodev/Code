@@ -79,4 +79,31 @@ final class ThemesTests: XCTestCase {
         try "font-size = 14\n".write(to: config, atomically: true, encoding: .utf8)
         XCTAssertNil(ConfigFile.themeOverride(for: config, in: [directory]))
     }
+
+    func testUsesCodeDefaultThemeWhenTheConfigNamesNone() throws {
+        let file = try theme(Themes.defaultTheme, in: directory)
+        let config = directory.appendingPathComponent("config")
+        try "font-size = 14\n".write(to: config, atomically: true, encoding: .utf8)
+
+        let override = try XCTUnwrap(ConfigFile.themeOverride(for: config, in: [directory]))
+        defer { try? FileManager.default.removeItem(at: override) }
+        XCTAssertEqual(ConfigDocument(try String(contentsOf: override, encoding: .utf8))["theme"], file.path)
+    }
+
+    func testAnEmptyThemeAsksForGhosttyColors() throws {
+        try theme(Themes.defaultTheme, in: directory)
+        let config = directory.appendingPathComponent("config")
+        try "theme = \"\"\n".write(to: config, atomically: true, encoding: .utf8)
+        XCTAssertNil(ConfigFile.themeOverride(for: config, in: [directory]),
+                     "an empty theme leaves the colors to Ghostty, even with a default")
+    }
+
+    func testNamesIgnoreCaseSoTheFirstDirectoryWins() throws {
+        let other = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: other) }
+        try theme("nord", in: directory)
+        try theme("Nord", in: other)
+        XCTAssertEqual(Themes.names(in: [directory, other]), ["nord"])
+    }
 }

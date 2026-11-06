@@ -27,20 +27,35 @@ struct ThemeChoice: Equatable {
 }
 
 enum Themes {
-    /// The directories themes are found in, Code's own before the bundled
-    /// ones it ships with.
+    /// The directories themes are found in, in lookup order: the user's own,
+    /// then the ones Code ships.
     static var directories: [URL] {
-        [ConfigFile.themesDirectory, Bundle.main.resourceURL?.appendingPathComponent("ghostty/themes")].compactMap { $0 }
+        [ConfigFile.themesDirectory,
+         Bundle.main.resourceURL?.appendingPathComponent("code-themes")].compactMap { $0 }
     }
 
-    /// The themes Ghostty finds by name: the user's own, then the ones Code
-    /// ships with.
-    static let names: [String] = {
-        let names = directories.flatMap { directory in
-            (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
-        }.filter { !$0.hasPrefix(".") }
-        return Array(Set(names)).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
-    }()
+    /// The theme Code uses when the config does not name one. It is one of
+    /// the themes in the bundled `code-themes`, so the picker lists it too.
+    static let defaultTheme = "modus"
+
+    /// The themes found by name, in the order a name is looked up. Names are
+    /// matched case-insensitively, so the first directory holding one decides
+    /// how it is spelled and shown: on a case-insensitive disk a user theme and
+    /// a bundled one of the same name cannot both be offered, and the user's
+    /// wins.
+    static func names(in directories: [URL]) -> [String] {
+        var seen = Set<String>()
+        var names: [String] = []
+        for directory in directories {
+            let entries = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+            for name in entries.filter({ !$0.hasPrefix(".") }) where seen.insert(name.lowercased()).inserted {
+                names.append(name)
+            }
+        }
+        return names.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
+
+    static let names: [String] = names(in: directories)
 
     /// The file Ghostty loads for a theme: a path as given, otherwise the
     /// user's theme of that name before the bundled one.

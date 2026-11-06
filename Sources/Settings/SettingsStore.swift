@@ -55,7 +55,7 @@ final class SettingsStore: ObservableObject {
     /// The files of the light and dark themes, which Ghostty loads before
     /// this file, so a line here wins over them.
     private var themeDocuments: [ConfigDocument] {
-        let theme = document[Option.theme]
+        let theme = document[Option.theme] ?? Themes.defaultTheme
         if themeCache.theme != theme {
             let choice = ThemeChoice(theme)
             let names = Array(Set([choice.light, choice.dark].compactMap { $0 })).sorted()
