@@ -16,10 +16,10 @@ Run Claude Code, Codex, OpenCode and Pi side by side in split panes, each in its
 
 It ships a separate build for each chip, so a download carries only what your Mac needs:
 
-| Build  | App   | DMG    |
-| ------ | ----- | ------ |
-| arm64  | 20 MB | 7.4 MB |
-| x86_64 | 21 MB | 7.8 MB |
+| Build  | App   | DMG     |
+| ------ | ----- | ------- |
+| arm64  | 17 MB | 7.21 MB |
+| x86_64 | 17 MB | 7.54 MB |
 
 A single universal build for both chips would be about 37 MB, roughly double the download.
 
