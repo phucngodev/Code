@@ -44,7 +44,7 @@ final class WorkspaceMenu: NSObject, NSMenuDelegate {
             menu.removeItem(at: fixedItemCount)
         }
         guard let contents = current else { return }
-        add(contents.workspaces, action: selectWorkspace, shortcuts: nil)
+        add(contents.workspaces, action: selectWorkspace, shortcuts: .option)
         add(contents.tabs, action: selectTab, shortcuts: .command)
     }
 
@@ -57,8 +57,8 @@ final class WorkspaceMenu: NSObject, NSMenuDelegate {
     }
 
     /// `shortcuts` is the modifier for the key equivalents to add, or nil for
-    /// entries listed without any. Workspaces are opened from the menu alone;
-    /// the tab numbers stay as Ghostty's own bindings.
+    /// entries listed without any. Workspaces take ⌥ and tabs ⌘, so the same
+    /// number keys choose a workspace or a tab.
     private func add(_ entries: Entries, action: Selector, shortcuts: NSEvent.ModifierFlags?) {
         guard !entries.names.isEmpty else { return }
         menu.addItem(.separator())
@@ -77,5 +77,13 @@ final class WorkspaceMenu: NSObject, NSMenuDelegate {
     static func keyEquivalent(at index: Int, of count: Int) -> String {
         if index < 8 { return "\(index + 1)" }
         return index == count - 1 ? "9" : ""
+    }
+
+    /// The entry a number key picks, or nil when that number has nothing to
+    /// select. `9` is the last, the inverse of `keyEquivalent(at:of:)`.
+    static func index(forKey key: String, of count: Int) -> Int? {
+        guard let number = Int(key), (1...9).contains(number), count > 0 else { return nil }
+        let index = number == 9 ? count - 1 : number - 1
+        return (0..<count).contains(index) ? index : nil
     }
 }

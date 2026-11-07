@@ -42,6 +42,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Agents that read an extension from their own folder get Code's now,
+        // so none of them has to be set up by hand.
+        AgentExtensions.installAll()
         Preferences.register()
         ConfigFile.createIfMissing()
         do {
@@ -137,8 +140,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pendingDirectories = nil
 
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self else { return event }
+            // AppKit only routes Command key equivalents to the menu, so the
+            // Option numbers that pick a workspace are handled here.
+            if self.selectWorkspace(with: event) { return nil }
             if let surface = event.window?.firstResponder as? TerminalSurfaceView {
-                self?.markSeenIfInView(surface)
+                self.markSeenIfInView(surface)
             }
             return event
         }
@@ -169,7 +176,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private static let actionsKeepingThePalette: Set<Selector> = [
-        #selector(showPlaces), #selector(showAgents),
+        #selector(showPlaces),
         #selector(NSText.copy(_:)), #selector(NSText.paste(_:)), #selector(NSText.selectAll(_:)),
     ]
 
@@ -402,54 +409,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: Command palette
 
     @objc private func showPlaces() {
-        keyWindow.map { showPalette(.places, in: $0) }
+        keyWindow.map { showPalette(in: $0) }
     }
 
-    @objc private func showAgents() {
-        keyWindow.map { showPalette(.agents, in: $0) }
-    }
-
-    /// The places are the window's own. The agents are every window's, since
-    /// one waiting in another window is as much the user's to answer.
-    private func showPalette(_ mode: CommandPalette.Mode, in window: TerminalWindow) {
-        window.showCommandPalette(mode, items: paletteItems(mode, in: window)) { [weak self] item in
+    /// The palette lists the window's workspaces and terminals, agents
+    /// included, most recently used first. Choosing any of them goes to it.
+    private func showPalette(in window: TerminalWindow) {
+        window.showCommandPalette(items: paletteItems(in: window)) { [weak self] item in
             guard let (window, surface) = self?.surface(withID: item.terminal) else { return }
             window.reveal(surface)
         }
     }
 
     /// A window changing its own terminals cancels its palette first, but
-    /// the agents palette lists every window's, whose tabs and panes can
-    /// close or move meanwhile. Only the changed window's items are made
-    /// again: a palette's own window shows previews, which would otherwise
-    /// rename its rows.
+    /// another window's palette lists them too, and they can close or move
+    /// meanwhile. Only the changed window's items are made again: a palette's
+    /// own window shows previews, which would otherwise rename its rows.
     private func updatePaletteItems(after window: TerminalWindow) {
         let palettes = windows.compactMap(\.controller.commandPalette)
         guard !palettes.isEmpty else { return }
         let changed = windows.contains { $0 === window } ? paletteItems(in: window) : []
-        let current = Dictionary(uniqueKeysWithValues: changed.map { ($0.terminal, $0) })
+        let current = Dictionary(uniqueKeysWithValues: changed.map { ($0.id, $0) })
         for palette in palettes {
-            palette.updateItems { item in current[item.terminal] ?? (surface(withID: item.terminal) == nil ? nil : item) }
-        }
-    }
-
-    private func paletteItems(_ mode: CommandPalette.Mode, in window: TerminalWindow) -> [CommandPalette.Item] {
-        switch mode {
-        case .places:
-            return CommandPalette.recentFirst(paletteItems(in: window), recentlyFocused: window.store.recentlyFocused)
-        case .agents:
-            let items = ([window] + windows.filter { $0 !== window }).flatMap(paletteItems(in:))
-            let statuses = MainActor.assumeIsolated {
-                Dictionary(uniqueKeysWithValues: items.compactMap { item in agentSessions.status(of: item.terminal).map { (item.terminal, $0) } })
-            }
-            return CommandPalette.agents(items, current: window.focusedSurface?.id, statuses: statuses)
+            palette.updateItems { item in current[item.id] ?? (surface(withID: item.terminal) == nil ? nil : item) }
         }
     }
 
     private func paletteItems(in window: TerminalWindow) -> [CommandPalette.Item] {
-        CommandPalette.items(in: window.store) { terminal in
+        let items = CommandPalette.items(in: window.store) { terminal in
             MainActor.assumeIsolated { agentSessions.runningAgent(in: terminal) }
         }
+        return CommandPalette.recentFirst(items, recentlyFocused: window.store.recentlyFocused)
     }
 
     private func makeSurface(id: UUID, workingDirectory: String?, command: String? = nil, workspace: UUID, startImmediately: Bool) -> TerminalSurfaceView {
@@ -471,6 +461,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard window(containing: surface)?.isInView(surface) == true else { return }
         MainActor.assumeIsolated { agentSessions.markSeen(surface.id) }
         notifications.clear(for: surface.id)
+    }
+
+    /// ⌥1–8 selects a workspace and ⌥9 the last, mirroring the tab numbers.
+    /// The Workspace menu lists the same keys, but AppKit sends only Command
+    /// key equivalents to the menu, so an Option one is matched here.
+    private func selectWorkspace(with event: NSEvent) -> Bool {
+        let mods = event.modifierFlags.intersection([.shift, .control, .option, .command])
+        guard mods == .option, let window = keyWindow,
+              let key = event.charactersIgnoringModifiers,
+              let index = WorkspaceMenu.index(forKey: key, of: window.store.workspaces.count) else { return false }
+        window.selectWorkspace(at: index)
+        return true
     }
 
     /// Brings the terminal whose agent most recently finished or asked for the
@@ -609,8 +611,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         zoomItem.keyEquivalentModifierMask = [.command, .shift]
         viewMenu.addItem(.separator())
         viewMenu.addItem(withTitle: "Toggle Sidebar", action: #selector(MainWindowController.toggleWorkspaceSidebar(_:)), keyEquivalent: "b")
-        viewMenu.addItem(withTitle: "Go to Tab or Pane", action: #selector(showPlaces), keyEquivalent: "p")
-        viewMenu.addItem(withTitle: "Go to Agent", action: #selector(showAgents), keyEquivalent: "i")
+        viewMenu.addItem(withTitle: "Go to…", action: #selector(showPlaces), keyEquivalent: "p")
         let fullScreenItem = viewMenu.addItem(withTitle: "Enter Full Screen", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
         fullScreenItem.keyEquivalentModifierMask = [.command, .control]
         mainMenu.addItem(submenu: viewMenu, title: "View")
@@ -669,7 +670,7 @@ extension AppDelegate: NSMenuItemValidation {
         if menuItem.action == #selector(renameWorkspace) {
             return keyWindow?.store.selected != nil
         }
-        if menuItem.action == #selector(showPlaces) || menuItem.action == #selector(showAgents) {
+        if menuItem.action == #selector(showPlaces) {
             return keyWindow != nil
         }
         return true
@@ -725,7 +726,7 @@ extension AppDelegate: GhosttyRuntimeDelegate {
     }
 
     func runtime(_ runtime: GhosttyRuntime, wantsCommandPaletteFrom surface: TerminalSurfaceView) {
-        window(containing: surface).map { showPalette(.places, in: $0) }
+        window(containing: surface).map { showPalette(in: $0) }
     }
 
     func runtimeWantsOpenConfig(_ runtime: GhosttyRuntime) {

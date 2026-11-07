@@ -17,13 +17,34 @@ final class CommandPaletteTests: XCTestCase {
         store.addWorkspace(customName: "web").add(TestTab(leaf: d))
 
         let items = CommandPalette.items(in: store)
-        XCTAssertEqual(items.map { "\($0.title) | \($0.detail) | \($0.workspace) | \($0.location)" }, [
+        let terminals = items.filter { $0.workspaceID == nil }
+        XCTAssertEqual(terminals.map { "\($0.title) | \($0.detail) | \($0.workspace) | \($0.location)" }, [
             "vim | /src/api | api | api › Tab 1",
             "/src/api |  | api | api › Tab 2 › Left",
             "logs |  | api | api › Tab 2 › Right",
             "zsh |  | web | web › Tab 1",
         ])
-        XCTAssertEqual(items.map(\.terminal), [a, b, c, d].map(\.id))
+        XCTAssertEqual(terminals.map(\.terminal), [a, b, c, d].map(\.id))
+        XCTAssertEqual(items.filter { $0.workspaceID != nil }.map(\.title), ["api", "web"], "each workspace leads its tabs")
+    }
+
+    func testListsEachWorkspaceBeforeItsTabsAndRevealsItsTerminalInView() {
+        let store = TestStore()
+        let a = FakeLeaf("a"), b = FakeLeaf("b")
+        let api = store.addWorkspace(customName: "api")
+        api.add(TestTab(leaf: a))
+        let web = store.addWorkspace(customName: "web")
+        web.add(TestTab(leaf: b))
+
+        let items = CommandPalette.items(in: store)
+        XCTAssertEqual(items.map(\.title), ["api", "a", "web", "b"], "a workspace leads its own tabs")
+        XCTAssertEqual(items.map(\.workspaceID), [api.id, nil, web.id, nil])
+        // A workspace row reveals the terminal it last had in view.
+        XCTAssertEqual(items.map(\.terminal), [a.id, a.id, b.id, b.id])
+        XCTAssertEqual(items.filter { $0.workspaceID != nil }.map(\.layout), [nil, nil], "a workspace has no pane of its own")
+
+        // Its name finds it, and the row outranks the tab that only names it in its location.
+        XCTAssertEqual(CommandPalette.filter(items, query: "web").map(\.title), ["web", "b"])
     }
 
     func testFindsAWorkspacesOnlyTabByNumber() {
@@ -37,7 +58,8 @@ final class CommandPaletteTests: XCTestCase {
         store.addWorkspace(customName: "web").add(TestTab(leaf: d))
 
         let items = CommandPalette.items(in: store)
-        XCTAssertEqual(items.map(\.location), ["api › Tab 1", "api › Tab 2 › Top", "api › Tab 2 › Bottom", "web › Tab 1"])
+        XCTAssertEqual(items.filter { $0.workspaceID == nil }.map(\.location),
+                       ["api › Tab 1", "api › Tab 2 › Top", "api › Tab 2 › Bottom", "web › Tab 1"])
         XCTAssertEqual(CommandPalette.filter(items, query: "web tab 1").map(\.title), ["d"])
     }
 
@@ -47,7 +69,7 @@ final class CommandPaletteTests: XCTestCase {
         store.addWorkspace(customName: "w").add(TestTab(leaf: FakeLeaf("vim", workingDirectory: home + "/src")))
         store.addWorkspace(customName: "x").add(TestTab(leaf: FakeLeaf(workingDirectory: home + "/src")))
         store.addWorkspace(customName: "y").add(TestTab(leaf: FakeLeaf()))
-        XCTAssertEqual(CommandPalette.items(in: store).map { "\($0.title) | \($0.detail)" }, ["vim | ~/src", "~/src | ", "Terminal | "])
+        XCTAssertEqual(CommandPalette.items(in: store).filter { $0.workspaceID == nil }.map { "\($0.title) | \($0.detail)" }, ["vim | ~/src", "~/src | ", "Terminal | "])
     }
 
     func testDrawsTheTabSplitWithTheItemsPaneHighlighted() {
@@ -58,10 +80,10 @@ final class CommandPaletteTests: XCTestCase {
         tab.panes.split(b, direction: .down, with: c)
         store.addWorkspace().add(tab)
 
-        let panes = CommandPalette.items(in: store)
+        let panes = CommandPalette.items(in: store).filter { $0.workspaceID == nil }
         XCTAssertEqual(panes.map(\.location), ["~ › Tab 1 › Left", "~ › Tab 1 › Top right", "~ › Tab 1 › Bottom right"])
-        XCTAssertEqual(panes.map(\.layout.highlighted), [0, 1, 2])
-        XCTAssertEqual(panes[0].layout.frames, [
+        XCTAssertEqual(panes.compactMap(\.layout).map(\.highlighted), [0, 1, 2])
+        XCTAssertEqual(panes[0].layout?.frames, [
             CGRect(x: 0, y: 0, width: 0.5, height: 1),
             CGRect(x: 0.5, y: 0, width: 0.5, height: 0.5),
             CGRect(x: 0.5, y: 0.5, width: 0.5, height: 0.5),
@@ -75,10 +97,10 @@ final class CommandPaletteTests: XCTestCase {
         tab.panes.split(a, direction: .right, with: b)
         store.addWorkspace().add(tab)
         store.addWorkspace().add(TestTab(leaf: c))
-        XCTAssertEqual(CommandPalette.items(in: store).map(\.layout.zoom), [nil, nil, nil])
+        XCTAssertEqual(CommandPalette.items(in: store).filter { $0.workspaceID == nil }.map { $0.layout?.zoom }, [nil, nil, nil])
 
         tab.panes.toggleZoom(b)
-        XCTAssertEqual(CommandPalette.items(in: store).map(\.layout.zoom), [.hidden, .zoomed, nil])
+        XCTAssertEqual(CommandPalette.items(in: store).filter { $0.workspaceID == nil }.map { $0.layout?.zoom }, [.hidden, .zoomed, nil])
     }
 
     // MARK: Pane names
@@ -167,7 +189,7 @@ final class CommandPaletteTests: XCTestCase {
         let store = TestStore()
         let (tree, panes) = tree([("a", .left), ("a", .down)])
         store.addWorkspace(customName: "api").add(TestTab(panes: tree, focused: panes["a"]!))
-        let locations = Dictionary(uniqueKeysWithValues: CommandPalette.items(in: store).map { ($0.title, $0.location) })
+        let locations = Dictionary(uniqueKeysWithValues: CommandPalette.items(in: store).filter { $0.workspaceID == nil }.map { ($0.title, $0.location) })
         XCTAssertEqual(locations, ["b": "api › Tab 1 › Left", "a": "api › Tab 1 › Top right", "c": "api › Tab 1 › Bottom right"])
     }
 
@@ -197,51 +219,6 @@ final class CommandPaletteTests: XCTestCase {
         tab.removePane(c)
         store.noteFocus(b)
         XCTAssertEqual(store.recentlyFocused, [b.id, a.id])
-    }
-
-    // MARK: Agents
-
-    /// The terminals named in `statuses` or `idle` run an agent.
-    private func agents(_ items: [Item], current: Item? = nil, idle: Set<String> = [],
-                        _ statuses: [String: (AgentIndicator, TimeInterval)]) -> [String] {
-        let items = items.map { item in
-            var item = item
-            item.agent = statuses[item.title] != nil || idle.contains(item.title) ? "agent" : nil
-            return item
-        }
-        let byTitle = Dictionary(uniqueKeysWithValues: items.map { ($0.title, $0.terminal) })
-        let statuses = Dictionary(uniqueKeysWithValues: statuses.map { title, status in
-            (byTitle[title]!, AgentStatus(indicator: status.0, since: Date(timeIntervalSince1970: status.1)))
-        })
-        return CommandPalette.agents(items, current: current?.terminal, statuses: statuses).map(\.title)
-    }
-
-    func testAgentsWaitingComeFirstThenFinishedThenWorking() {
-        let items = ["a", "b", "c", "d"].map { item($0) }
-        XCTAssertEqual(agents(items, ["a": (.working, 1), "b": (.done, 2), "c": (.waiting, 3)]), ["c", "b", "a"])
-    }
-
-    func testAgentsInTheSameStateComeLongestFirst() {
-        let items = ["a", "b", "c", "d"].map { item($0) }
-        XCTAssertEqual(agents(items, ["a": (.waiting, 30), "b": (.waiting, 10), "c": (.waiting, 20), "d": (.done, 0)]), ["b", "c", "a", "d"])
-    }
-
-    func testIdleAgentsComeAfterFinishedAndBeforeWorkingInListedOrder() {
-        let items = ["a", "b", "c", "d", "e"].map { item($0) }
-        XCTAssertEqual(agents(items, idle: ["d", "b"], ["a": (.working, 1), "c": (.done, 2)]), ["c", "b", "d", "a"])
-    }
-
-    func testAgentsThatStartedTogetherKeepTheirListedOrder() {
-        let items = ["a", "b", "c"].map { item($0) }
-        XCTAssertEqual(agents(items, ["c": (.done, 5), "a": (.done, 5), "b": (.done, 5)]), ["a", "b", "c"])
-    }
-
-    func testAgentsPutTheTerminalInViewFirst() {
-        let items = ["a", "b", "c"].map { item($0) }
-        XCTAssertEqual(agents(items, current: items[2], ["a": (.waiting, 2), "b": (.waiting, 1), "c": (.working, 0)]), ["c", "b", "a"])
-        XCTAssertEqual(agents(items, current: items[0], ["a": (.waiting, 1)]), ["a"])
-        XCTAssertEqual(agents(items, current: items[0], ["b": (.waiting, 1)]), ["b"], "the terminal in view has no agent")
-        XCTAssertEqual(agents(items, current: items[1], idle: ["b"], ["a": (.waiting, 1)]), ["b", "a"], "even an idle one")
     }
 
     // MARK: Search
@@ -322,7 +299,7 @@ final class CommandPaletteTests: XCTestCase {
         let a = FakeLeaf("a"), b = FakeLeaf("b")
         store.addWorkspace().add(TestTab(leaf: a))
         store.addWorkspace().add(TestTab(leaf: b))
-        let items = CommandPalette.items(in: store) { $0 == b.id ? "claude" : nil }
+        let items = CommandPalette.items(in: store) { $0 == b.id ? "claude" : nil }.filter { $0.workspaceID == nil }
         XCTAssertEqual(items.map(\.agent), [nil, "claude"])
     }
 
@@ -365,7 +342,7 @@ final class CommandPaletteViewTests: XCTestCase {
         items[0].title = "apiary"
         items[1].title = "api"
         let (current, api) = (items[0], items[1])
-        let palette = CommandPaletteView(.places, items: items, current: current.terminal, agentIndicator: { _ in nil })
+        let palette = CommandPaletteView(items: items, current: current.terminal, agentIndicator: { _ in nil })
         var selected: [UUID?] = []
         palette.onSelect = { selected.append($0?.terminal) }
         try type("api", in: palette)
@@ -376,7 +353,7 @@ final class CommandPaletteViewTests: XCTestCase {
 
     func testStartsOnTheTerminalInViewSoSteppingOnceGoesToTheNext() {
         let items = items(3)
-        let palette = CommandPaletteView(.agents, items: items, current: items[0].terminal, agentIndicator: { _ in nil })
+        let palette = CommandPaletteView(items: items, current: items[0].terminal, agentIndicator: { _ in nil })
         var selected: [UUID?] = []
         palette.onSelect = { selected.append($0?.terminal) }
         palette.selectNext()
@@ -385,7 +362,7 @@ final class CommandPaletteViewTests: XCTestCase {
 
     func testStartsOnNothingWhenTheTerminalInViewIsNotListed() {
         let items = items(3)
-        let palette = CommandPaletteView(.agents, items: items, current: UUID(), agentIndicator: { _ in nil })
+        let palette = CommandPaletteView(items: items, current: UUID(), agentIndicator: { _ in nil })
         var selected: [UUID?] = []
         palette.onSelect = { selected.append($0?.terminal) }
         palette.selectNext()
@@ -395,7 +372,7 @@ final class CommandPaletteViewTests: XCTestCase {
     func testItemsFollowOtherWindowsWithoutMovingTheSelection() {
         let items = items(3)
         var current = Dictionary(uniqueKeysWithValues: items.map { ($0.terminal, $0) })
-        let palette = CommandPaletteView(.places, items: items, current: items[0].terminal, agentIndicator: { _ in nil })
+        let palette = CommandPaletteView(items: items, current: items[0].terminal, agentIndicator: { _ in nil })
         var selected: [UUID?] = []
         palette.onSelect = { selected.append($0?.terminal) }
         palette.selectNext()

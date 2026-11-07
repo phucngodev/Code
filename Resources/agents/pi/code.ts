@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process"
 
-// Pi loads this extension into each run it starts, through `--extension`, so
-// nothing is written to the user's configuration. It reports the session to
-// Code with `cde event`, so Code never reads Pi's files.
+// Code installs this extension into Pi's config folder at each launch, and Pi
+// loads the extensions it finds there. It reports the session to Code with
+// `cde event`, so Code never reads Pi's files.
 export default function (pi) {
   const cde = process.env.CODE_CDE
   if (!cde) return

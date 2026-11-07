@@ -15,6 +15,6 @@ extension AgentAdapter {
 /// folder. Code's is installed there rather than passed with `--extension` at
 /// each launch, so `pi` on PATH stays the user's own binary.
 enum Pi {
-    /// Code's extension inside the app's resources, for Settings to install.
+    /// Code's extension inside the app's resources, for Code to install itself.
     static let extensionResource = "agents/pi/code.ts"
 }

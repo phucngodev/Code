@@ -16,16 +16,16 @@ enum KeyboardShortcuts {
     static let all: [Section] = [
         Section(title: "Workspaces", shortcuts: [
             Shortcut(title: "New workspace", keys: ["⌘", "N"]),
+            Shortcut(title: "Switch workspace", keys: ["⌥", "1–8"]),
+            Shortcut(title: "Last workspace", keys: ["⌥", "9"]),
             Shortcut(title: "Previous workspace", keys: ["⇧", "⌘", "["]),
             Shortcut(title: "Next workspace", keys: ["⇧", "⌘", "]"]),
             Shortcut(title: "Rename workspace", keys: ["⇧", "⌘", "R"]),
             Shortcut(title: "Show or hide the sidebar", keys: ["⌘", "B"]),
         ]),
         Section(title: "Go to", shortcuts: [
-            Shortcut(title: "Go to a tab or pane", keys: ["⌘", "P"]),
+            Shortcut(title: "Go to a tab, pane, workspace or agent", keys: ["⌘", "P"]),
             Shortcut(title: "Go back to the previous place", keys: ["⌘", "P", "P"]),
-            Shortcut(title: "Go to an agent", keys: ["⌘", "I"]),
-            Shortcut(title: "Go to the agent waiting longest", keys: ["⌘", "I", "I"]),
             Shortcut(title: "Step up the list, going there on letting go of ⌘", keys: ["⌘", "↑"]),
             Shortcut(title: "Step down the list, going there on letting go of ⌘", keys: ["⌘", "↓"]),
         ]),

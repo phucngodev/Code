@@ -1,34 +1,12 @@
 import Foundation
 
-/// What the command palette lists: every terminal in a window, as a tab or as
-/// a pane of a split tab, or only the terminals with agents. Choosing an item
-/// goes to its terminal.
+/// What the command palette lists: every workspace and terminal in a window,
+/// a split tab as its panes. Choosing an item goes to it.
 enum CommandPalette {
-    /// Every tab and pane, most recently used first, or the agents in order
-    /// of how long they have needed the user.
-    enum Mode {
-        case places, agents
-
-        var placeholder: String {
-            switch self {
-            case .places: "Go to tab or pane"
-            case .agents: "Go to agent"
-            }
-        }
-
-        /// Shown when there is nothing to list before any search.
-        var emptyMessage: String {
-            switch self {
-            case .places: "No terminals"
-            case .agents: "No running agents"
-            }
-        }
-
-        /// Working agents are listed for completeness but don't need the user yet.
-        var dimsWorkingAgents: Bool {
-            self == .agents
-        }
-    }
+    /// What the search field says it finds.
+    static let placeholder = "Go to tab, pane, workspace or agent"
+    /// Shown when there is nothing to list before any search.
+    static let emptyMessage = "Nothing to go to"
 
     struct Item: Equatable {
         var terminal: UUID
@@ -44,7 +22,16 @@ enum CommandPalette {
         /// The agent running in the terminal, which a search matches though
         /// the row doesn't name it.
         var agent: String?
-        var layout: PaneLayout
+        /// The pane layout drawn as the row's icon, or nil for a workspace row,
+        /// which has no pane of its own.
+        var layout: PaneLayout?
+        /// The workspace the row stands for, when it stands for one rather than
+        /// for a tab. It gives the row its own identity, since a workspace row
+        /// reveals the same terminal as that terminal's own row.
+        var workspaceID: UUID?
+
+        /// The row's identity, unique within a list.
+        var id: UUID { workspaceID ?? terminal }
     }
 
     /// Each pane's frame in a unit square with y pointing down, in tree order,
@@ -68,10 +55,12 @@ enum CommandPalette {
 
     // MARK: Items
 
-    /// In sidebar order: each workspace's tabs, a split tab as its panes.
+    /// In sidebar order: each workspace, then its tabs, a split tab as its
+    /// panes. A workspace leads its tabs so it can be searched and chosen like
+    /// them; it reveals whatever terminal it last had in view.
     static func items<Leaf>(in store: WorkspaceStoreModel<Leaf>, agent: (UUID) -> String? = { _ in nil }) -> [Item] {
-        store.workspaces.flatMap { workspace in
-            workspace.tabs.enumerated().flatMap { index, tab in
+        store.workspaces.flatMap { workspace -> [Item] in
+            let tabs = workspace.tabs.enumerated().flatMap { index, tab in
                 let location = "\(workspace.name) › Tab \(index + 1)"
                 let panes = tab.panes.leaves
                 let frames = frames(of: tab.panes.root, in: CGRect(x: 0, y: 0, width: 1, height: 1))
@@ -88,6 +77,11 @@ enum CommandPalette {
                                 layout: PaneLayout(frames: frames, highlighted: index, zoomed: zoomed))
                 }
             }
+            guard let tab = workspace.selectedTab ?? workspace.tabs.first else { return tabs }
+            let head = Item(terminal: tab.focusedLeaf.id, title: workspace.name, detail: directory(of: tab.focusedLeaf),
+                            workspace: workspace.name, location: workspace.name, agent: nil, layout: nil,
+                            workspaceID: workspace.id)
+            return [head] + tabs
         }
     }
 
@@ -133,33 +127,10 @@ enum CommandPalette {
     /// before it follows. Terminals not focused yet keep their order.
     static func recentFirst(_ items: [Item], recentlyFocused: [UUID]) -> [Item] {
         let rank = Dictionary(recentlyFocused.enumerated().map { ($1, $0) }) { first, _ in first }
+        func place(_ item: Item) -> Int { rank[item.terminal] ?? .max }
         return items.enumerated()
-            .sorted { (rank[$0.element.terminal] ?? .max, $0.offset) < (rank[$1.element.terminal] ?? .max, $1.offset) }
+            .sorted { (place($0.element), $0.offset) < (place($1.element), $1.offset) }
             .map(\.element)
-    }
-
-    /// The agent in view, then the ones waiting for input, the finished
-    /// ones, the idle ones and the working ones. Each state comes longest
-    /// first, except idle agents, which have no time to go by and keep the
-    /// sidebar's order. Terminals without a running agent are left out.
-    static func agents(_ items: [Item], current: UUID?, statuses: [UUID: AgentStatus]) -> [Item] {
-        func rank(_ indicator: AgentIndicator?) -> Int {
-            switch indicator {
-            case .waiting: 0
-            case .done: 1
-            // An idle agent can take its next prompt, which one still working can't.
-            case nil: 2
-            case .working: 3
-            }
-        }
-        return items.enumerated()
-            .compactMap { index, item -> (item: Item, key: (Int, Int, Date, Int))? in
-                guard item.agent != nil else { return nil }
-                let status = statuses[item.terminal]
-                return (item, (item.terminal == current ? 0 : 1, rank(status?.indicator), status?.since ?? .distantPast, index))
-            }
-            .sorted { $0.key < $1.key }
-            .map(\.item)
     }
 
     // MARK: Search

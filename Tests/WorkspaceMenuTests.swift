@@ -31,7 +31,8 @@ final class WorkspaceMenuTests: XCTestCase {
 
         let workspaces = menu.menu.items.filter { $0.action == #selector(Receiver.selectWorkspace(_:)) }
         XCTAssertEqual(workspaces.map(\.title), workspaceNames)
-        XCTAssertEqual(workspaces.map(\.keyEquivalent), Array(repeating: "", count: 11), "workspaces have no shortcut")
+        XCTAssertEqual(workspaces.map(\.keyEquivalent), (1...8).map { "\($0)" } + ["", "", "9"])
+        XCTAssertEqual(workspaces.map(\.keyEquivalentModifierMask), Array(repeating: .option, count: 11))
         XCTAssertEqual(workspaces.map(\.state), Array(repeating: .off, count: 10) + [.on])
 
         let tabs = menu.menu.items.filter { $0.action == #selector(Receiver.selectTab(_:)) }
@@ -44,6 +45,39 @@ final class WorkspaceMenuTests: XCTestCase {
     func testKeyEquivalentsPutNineOnTheLastTab() {
         XCTAssertEqual((0..<11).map { WorkspaceMenu.keyEquivalent(at: $0, of: 11) }, (1...8).map { "\($0)" } + ["", "", "9"])
         XCTAssertEqual((0..<3).map { WorkspaceMenu.keyEquivalent(at: $0, of: 3) }, ["1", "2", "3"], "a short list keeps its numbers")
+    }
+
+    func testNumberKeysMapToEntriesWithNineOnTheLast() {
+        XCTAssertEqual(WorkspaceMenu.index(forKey: "1", of: 3), 0)
+        XCTAssertEqual(WorkspaceMenu.index(forKey: "2", of: 3), 1)
+        XCTAssertEqual(WorkspaceMenu.index(forKey: "3", of: 3), 2)
+        XCTAssertEqual(WorkspaceMenu.index(forKey: "9", of: 3), 2, "9 is the last")
+        XCTAssertNil(WorkspaceMenu.index(forKey: "4", of: 3), "there is no fourth")
+        XCTAssertNil(WorkspaceMenu.index(forKey: "9", of: 0))
+        XCTAssertNil(WorkspaceMenu.index(forKey: "x", of: 3))
+
+        // Both directions agree for every entry the menu gives a key.
+        for count in 1...12 {
+            for index in 0..<count {
+                let key = WorkspaceMenu.keyEquivalent(at: index, of: count)
+                guard !key.isEmpty else { continue }
+                XCTAssertEqual(WorkspaceMenu.index(forKey: key, of: count), index, "count \(count) index \(index)")
+            }
+        }
+    }
+
+    private func keyEvent(_ key: String, characters: String, flags: NSEvent.ModifierFlags, keyCode: UInt16) -> NSEvent {
+        NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 1, windowNumber: 0,
+                         context: nil, characters: characters, charactersIgnoringModifiers: key, isARepeat: false, keyCode: keyCode)!
+    }
+
+    func testOptionNumbersReachTheWorkspaceItems() {
+        let menu = makeMenu(.init(workspaces: .init(names: ["w1", "w2"], selected: 0), tabs: .init(names: ["t1"], selected: 0)))
+        menu.menuNeedsUpdate(menu.menu)
+        // Option+1 arrives with a special `characters` but ignores to "1",
+        // which is what AppKit matches a key equivalent against.
+        XCTAssertTrue(menu.menu.performKeyEquivalent(with: keyEvent("1", characters: "\u{00A1}", flags: .option, keyCode: 18)))
+        XCTAssertTrue(menu.menu.performKeyEquivalent(with: keyEvent("2", characters: "\u{2122}", flags: .option, keyCode: 19)))
     }
 
     func testRebuildingKeepsTheFixedItemsOnce() {

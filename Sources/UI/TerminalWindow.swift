@@ -187,25 +187,21 @@ final class TerminalWindow: NSObject, NSWindowDelegate {
 
     // MARK: Command palette
 
-    /// Opens the palette, or steps to its next item when one of the same mode
-    /// is open; one of the other mode is cancelled first. The window shows the
-    /// selected item behind the palette while it is in this window, and
-    /// otherwise where the palette was opened. `reveal` goes to the chosen
-    /// item, in whichever window holds it.
+    /// Opens the palette, or steps to its next item when one is already open.
+    /// The window shows the selected item behind the palette while it is in
+    /// this window, and otherwise where the palette was opened. `reveal` goes
+    /// to the chosen item, in whichever window holds it.
     ///
     /// The items are only made once a palette already open has been
     /// cancelled, so they are listed from where the user is rather than from
     /// a place being previewed.
-    func showCommandPalette(_ mode: CommandPalette.Mode, items: @autoclosure () -> [CommandPalette.Item],
+    func showCommandPalette(items: @autoclosure () -> [CommandPalette.Item],
                             reveal: @escaping (CommandPalette.Item) -> Void) {
-        if let open = controller.commandPalette {
-            guard open.mode != mode else { return open.selectNext() }
-            open.cancel()
-        }
+        if let open = controller.commandPalette { return open.selectNext() }
         let origin = store.places
         paletteOrigin = origin
         setDefersStart(true)
-        let palette = CommandPaletteView(mode, items: items(), current: focusedSurface?.id,
+        let palette = CommandPaletteView(items: items(), current: focusedSurface?.id,
                                          agentIndicator: controller.agentIndicator,
                                          dividerColor: config().splitDividerColor)
         palette.commandTarget = focusedSurface

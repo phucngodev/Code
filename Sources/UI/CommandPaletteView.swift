@@ -5,11 +5,10 @@ import AppKit
 /// Escape or a click outside cancels. As in VS Code, pressing the palette's
 /// shortcut again or an arrow while holding ⌘ steps through the list and
 /// letting go of ⌘ chooses the item, so a quick ⌘P P goes back to the previous
-/// place and ⌘I I to the agent that has waited longest.
+/// place.
 final class CommandPaletteView: NSView, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
-    let mode: CommandPalette.Mode
     /// The terminal in view, which the palette starts on so that stepping once
-    /// goes to the previous place or the agent that has waited longest.
+    /// goes to the previous place.
     private let current: UUID?
     /// The terminal the palette was opened from. Its menu commands, such as
     /// Find or a font size change, stay enabled while the palette has the
@@ -27,9 +26,9 @@ final class CommandPaletteView: NSView, NSTextFieldDelegate, NSTableViewDataSour
     private var items: [CommandPalette.Item]
     private let agentIndicator: @MainActor (UUID) -> AgentIndicator?
     private var shown: [CommandPalette.Item] = []
-    /// The selected item's terminal, so a search that keeps the same best
+    /// The selected item's identity, so a search that keeps the same best
     /// match previews nothing again.
-    private var selectedTerminal: UUID?
+    private var selectedID: UUID?
     private var isUpdating = false
     private var commandReleaseMonitor: Any?
     private var titleBarClickMonitor: Any?
@@ -41,17 +40,16 @@ final class CommandPaletteView: NSView, NSTextFieldDelegate, NSTableViewDataSour
     private let panel: PalettePanel
     private var tableHeight: NSLayoutConstraint!
 
-    init(_ mode: CommandPalette.Mode, items: [CommandPalette.Item], current: UUID?,
+    init(items: [CommandPalette.Item], current: UUID?,
          agentIndicator: @escaping @MainActor (UUID) -> AgentIndicator?,
          dividerColor: NSColor = .separatorColor) {
-        self.mode = mode
         self.current = current
         self.items = items
         self.agentIndicator = agentIndicator
         self.panel = PalettePanel(borderColor: dividerColor)
         super.init(frame: .zero)
 
-        field.placeholderString = mode.placeholder
+        field.placeholderString = CommandPalette.placeholder
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
@@ -161,7 +159,7 @@ final class CommandPaletteView: NSView, NSTextFieldDelegate, NSTableViewDataSour
         let updated = items.compactMap(current)
         guard updated != items else { return }
         items = updated
-        update(keeping: selectedTerminal)
+        update(keeping: selectedID)
     }
 
     /// Agents change state far more often than the list changes, so only the
@@ -234,15 +232,15 @@ final class CommandPaletteView: NSView, NSTextFieldDelegate, NSTableViewDataSour
     /// The terminal to keep stays selected while it is shown. Otherwise a
     /// search selects, and so previews, its best match, and no search the
     /// terminal in view.
-    private func update(keeping terminal: UUID? = nil) {
+    private func update(keeping id: UUID? = nil) {
         isUpdating = true
         shown = CommandPalette.filter(items, query: field.stringValue)
         tableView.reloadData()
         message.isHidden = !shown.isEmpty
-        message.stringValue = items.isEmpty ? mode.emptyMessage : "No matches"
+        message.stringValue = items.isEmpty ? CommandPalette.emptyMessage : "No matches"
         tableHeight.constant = Self.rowHeight * CGFloat(min(max(shown.count, 1), Self.visibleRows))
         let isSearching = !field.stringValue.trimmingCharacters(in: .whitespaces).isEmpty
-        if let row = row(of: terminal) ?? (isSearching ? shown.indices.first : row(of: current)) {
+        if let row = row(of: id) ?? (isSearching ? shown.indices.first : row(of: current)) {
             select(row)
         } else {
             tableView.deselectAll(nil)
@@ -253,13 +251,13 @@ final class CommandPaletteView: NSView, NSTextFieldDelegate, NSTableViewDataSour
 
     private func reportSelection() {
         let item = shown.indices.contains(tableView.selectedRow) ? shown[tableView.selectedRow] : nil
-        guard item?.terminal != selectedTerminal else { return }
-        selectedTerminal = item?.terminal
+        guard item?.id != selectedID else { return }
+        selectedID = item?.id
         onSelect?(item)
     }
 
-    private func row(of terminal: UUID?) -> Int? {
-        shown.firstIndex { $0.terminal == terminal }
+    private func row(of id: UUID?) -> Int? {
+        shown.firstIndex { $0.id == id }
     }
 
     private func select(_ row: Int) {
@@ -278,9 +276,9 @@ final class CommandPaletteView: NSView, NSTextFieldDelegate, NSTableViewDataSour
     }
 
     private func showAgent(in view: PaletteItemView, row: Int) {
-        let indicator = agentIndicator(shown[row].terminal)
+        // A workspace row stands for the place, not for the agent running in it.
+        let indicator = shown[row].workspaceID == nil ? agentIndicator(shown[row].terminal) : nil
         view.agentIndicator = indicator
-        view.alphaValue = mode.dimsWorkingAgents && indicator == .working ? 0.5 : 1
     }
 
     // MARK: NSTextFieldDelegate
@@ -435,7 +433,7 @@ private final class PaletteRowView: NSTableRowView {
 private final class PaletteItemView: NSTableCellView {
     private static let accessorySpacing: CGFloat = 8
 
-    private let icon: PaneLayoutIcon
+    private let icon: NSView
     private let title = NSTextField(labelWithString: "")
     private let detail = NSTextField(labelWithString: "")
     private let workspace = NSTextField(labelWithString: "")
@@ -452,7 +450,15 @@ private final class PaletteItemView: NSTableCellView {
     }
 
     init(item: CommandPalette.Item) {
-        icon = PaneLayoutIcon(layout: item.layout)
+        // The left icon marks what the row is: an agent's terminal, another
+        // terminal's panes, or a workspace.
+        if item.agent != nil {
+            icon = PaletteItemView.symbol("sparkle", description: "Agent")
+        } else if let layout = item.layout {
+            icon = PaneLayoutIcon(layout: layout)
+        } else {
+            icon = PaletteItemView.symbol("square.grid.2x2", description: "Workspace")
+        }
         super.init(frame: .zero)
         title.stringValue = item.title
         title.font = .systemFont(ofSize: 14, weight: .medium)
@@ -468,8 +474,8 @@ private final class PaletteItemView: NSTableCellView {
         workspace.lineBreakMode = .byTruncatingTail
         workspace.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        zoomIcon.isHidden = item.layout.zoom == nil
-        if let zoom = item.layout.zoom {
+        zoomIcon.isHidden = item.layout?.zoom == nil
+        if let zoom = item.layout?.zoom {
             // The same arrows as zooming a pane and the title bar's Reset zoom.
             let (symbol, label) = switch zoom {
             case .zoomed: ("arrow.up.left.and.arrow.down.right", "Zoomed")
@@ -523,6 +529,14 @@ private final class PaletteItemView: NSTableCellView {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
+    }
+
+    private static func symbol(_ name: String, description: String) -> NSView {
+        let view = NSImageView()
+        view.image = NSImage(systemSymbolName: name, accessibilityDescription: description)
+        view.symbolConfiguration = .init(pointSize: 13, weight: .regular)
+        view.contentTintColor = .secondaryLabelColor
+        return view
     }
 }
 

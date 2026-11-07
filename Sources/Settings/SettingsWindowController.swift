@@ -13,7 +13,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         tabs.addTabViewItem(Self.pane("General", symbol: "gearshape", store: store, GeneralSettingsView(store: store)))
         tabs.addTabViewItem(Self.pane("Appearance", symbol: "paintpalette", store: store, AppearanceSettingsView(store: store)))
         tabs.addTabViewItem(Self.pane("Notifications", symbol: "bell.badge", store: store, NotificationsSettingsView(store: store)))
-        tabs.addTabViewItem(Self.pane("Agents", symbol: "sparkles", store: store, AgentsSettingsView()))
         tabs.addTabViewItem(Self.pane("Advanced", symbol: "gearshape.2", store: store, AdvancedSettingsView(store: store, reload: reload)))
         let window = NSWindow(contentViewController: tabs)
         window.styleMask = [.titled, .closable]

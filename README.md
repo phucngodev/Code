@@ -80,7 +80,7 @@ Run `claude`, `codex`, `opencode` or `pi` in a Code terminal and the workspace s
 
 Looking at the terminal clears the green dot. A terminal you are not looking at also gets a macOS notification, which focuses it when clicked, and a sound: one when an agent needs you, another when it finishes. Pick the sounds, or turn them and the notifications off, in **Settings › Notifications**.
 
-Code does this through the agents' own hooks and plugins. For Claude, Codex and OpenCode it adds them at each launch, without writing to `~/.claude`, `~/.codex` or `~/.config/opencode`. Pi is not shadowed on PATH: Code's extension is installed into `~/.pi/agent/extensions` from **Settings › Agents**, so `which pi` keeps pointing at your own install. An agent started outside Code behaves exactly as before. There is nothing to set up for fish and zsh. Three things need a step from you:
+Code does this through the agents' own hooks and plugins. For Claude, Codex and OpenCode it adds them at each launch, without writing to `~/.claude`, `~/.codex` or `~/.config/opencode`. Pi is not shadowed on PATH: once Pi has a config folder, Code installs its extension into `~/.pi/agent/extensions` at each launch, so `which pi` keeps pointing at your own install. An agent started outside Code behaves exactly as before. There is nothing to set up for fish and zsh. Two things need a step from you:
 
 **Bash.** Code cannot add itself to bash. Put this at the end of `~/.bashrc` or `~/.bash_profile`:
 
@@ -89,8 +89,6 @@ Code does this through the agents' own hooks and plugins. For Claude, Codex and 
 ```
 
 **Codex.** Codex runs a hook only after you have reviewed it. The first time you start `codex` in Code, run `/hooks` inside it and trust the Code hooks. Codex remembers your answer, and asks again only if Code moves to a different location or an update changes its hooks.
-
-**Pi.** Install Code's extension from **Settings › Agents**. Until you do, Pi reports nothing and its workspace shows no status. Install it again after updating Code.
 
 To run an agent without Code's hooks for one session, start it with `CODE_AGENTS_DISABLED=1`.
 

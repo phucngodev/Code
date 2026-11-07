@@ -22,26 +22,24 @@ final class AgentExtensionTests: XCTestCase {
         AgentExtension(agent: "Pi", directory: root.appendingPathComponent("extensions"), name: "code.ts", source: source)
     }
 
-    func testInstallCopiesTheExtensionAndReportsItsState() throws {
+    func testInstallCopiesTheExtension() throws {
         let ext = extensionInstalling(try makeSource("code"))
-        XCTAssertEqual(ext.status(), .missing)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: ext.destination.path))
 
-        XCTAssertTrue(try ext.install())
-        XCTAssertEqual(ext.status(), .installed)
+        XCTAssertTrue(try ext.install(), "the first install writes the file")
         XCTAssertEqual(try String(contentsOf: ext.destination, encoding: .utf8), "code")
 
         XCTAssertFalse(try ext.install(), "the extension is already up to date")
 
         try "newer".write(to: ext.source, atomically: true, encoding: .utf8)
-        XCTAssertEqual(ext.status(), .outdated)
-        XCTAssertTrue(try ext.install())
-        XCTAssertEqual(ext.status(), .installed)
+        XCTAssertTrue(try ext.install(), "a changed extension is written again")
+        XCTAssertEqual(try String(contentsOf: ext.destination, encoding: .utf8), "newer")
     }
 
     func testMissingBundledExtensionThrows() {
         let ext = extensionInstalling(root.appendingPathComponent("absent.ts"))
         XCTAssertThrowsError(try ext.install())
-        XCTAssertEqual(ext.status(), .missing)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: ext.destination.path))
     }
 
     func testPiUsesTheAgentDirectoryOverride() {
@@ -54,5 +52,23 @@ final class AgentExtensionTests: XCTestCase {
 
         let byDefault = AgentExtensions.pi(home: root, resources: resources, environment: [:])
         XCTAssertEqual(byDefault?.directory.path, root.appendingPathComponent(".pi/agent/extensions").path)
+    }
+
+    func testInstallAllCopiesEveryExtension() throws {
+        let ext = extensionInstalling(try makeSource("code"))
+
+        AgentExtensions.installAll(extensions: [ext])
+
+        XCTAssertEqual(try String(contentsOf: ext.destination, encoding: .utf8), "code")
+    }
+
+    func testInstallAllSkipsAnAgentWhoseConfigFolderIsMissing() throws {
+        let missing = root.appendingPathComponent("absent")
+        let ext = AgentExtension(agent: "Pi", directory: missing.appendingPathComponent("extensions"),
+                                 name: "code.ts", source: try makeSource("code"))
+
+        AgentExtensions.installAll(extensions: [ext])
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: missing.path), "nothing is made for an agent that is not set up")
     }
 }

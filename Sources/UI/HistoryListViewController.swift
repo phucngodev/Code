@@ -17,10 +17,26 @@ final class HistoryListViewController: NSViewController, NSTableViewDataSource, 
     private let searchField = NSSearchField()
     private let headerLabel = NSTextField(labelWithString: "Sessions")
     private let placeholderLabel = NSTextField(labelWithString: "No saved sessions")
+    private let toggleButton = NSButton(
+        image: NSImage(systemSymbolName: "chevron.right", accessibilityDescription: "Show sessions")!,
+        target: nil, action: nil)
     private var sessions: [HistorySession] = []
     private var shown: [HistorySession] = []
     private var isLoading = false
     private let queue = DispatchQueue(label: "dev.phucngo.code.history", qos: .utility)
+
+    /// Whether the list is showing. Collapsed by default, so the sessions a
+    /// user rarely opens do not take the sidebar's space until asked for.
+    var isExpanded = false {
+        didSet { applyQuery() }
+    }
+
+    /// Called when the toggle is pressed, so the sidebar can resize the pane.
+    var onExpandedChange: ((Bool) -> Void)?
+    /// Which constraints lay the list out below the heading, and which lay the
+    /// bar out on its own. Only one set is active at a time.
+    private var expandedConstraints: [NSLayoutConstraint] = []
+    private var collapsedConstraints: [NSLayoutConstraint] = []
 
     override func loadView() {
         let column = NSTableColumn(identifier: .init("history"))
@@ -57,6 +73,12 @@ final class HistoryListViewController: NSViewController, NSTableViewDataSource, 
         searchField.action = #selector(searchChanged)
         searchField.translatesAutoresizingMaskIntoConstraints = false
 
+        toggleButton.target = self
+        toggleButton.action = #selector(toggleExpanded)
+        toggleButton.isBordered = false
+        toggleButton.contentTintColor = .secondaryLabelColor
+        toggleButton.translatesAutoresizingMaskIntoConstraints = false
+
         placeholderLabel.font = .systemFont(ofSize: 11)
         placeholderLabel.textColor = .tertiaryLabelColor
         placeholderLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -64,6 +86,7 @@ final class HistoryListViewController: NSViewController, NSTableViewDataSource, 
         let container = NSView()
         container.addSubview(headerLabel)
         container.addSubview(searchField)
+        container.addSubview(toggleButton)
         container.addSubview(scrollView)
         container.addSubview(placeholderLabel)
         NSLayoutConstraint.activate([
@@ -72,16 +95,29 @@ final class HistoryListViewController: NSViewController, NSTableViewDataSource, 
             headerLabel.topAnchor.constraint(equalTo: container.topAnchor, constant: 10),
             scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: headerLabel.bottomAnchor, constant: 4),
-            scrollView.bottomAnchor.constraint(equalTo: searchField.topAnchor, constant: -4),
             searchField.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
-            searchField.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -12),
-            searchField.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -8),
+            searchField.trailingAnchor.constraint(equalTo: toggleButton.leadingAnchor, constant: -6),
+            toggleButton.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -12),
+            toggleButton.centerYAnchor.constraint(equalTo: searchField.centerYAnchor),
             placeholderLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
             placeholderLabel.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -12),
-            placeholderLabel.topAnchor.constraint(equalTo: scrollView.topAnchor, constant: 4),
         ])
+        // Open: the list fills between the heading and the search row. Closed:
+        // the bar is the whole pane, so the search sits centred on its own.
+        expandedConstraints = [
+            scrollView.topAnchor.constraint(equalTo: headerLabel.bottomAnchor, constant: 4),
+            scrollView.bottomAnchor.constraint(equalTo: searchField.topAnchor, constant: -4),
+            searchField.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -8),
+            placeholderLabel.topAnchor.constraint(equalTo: scrollView.topAnchor, constant: 4),
+        ]
+        collapsedConstraints = [
+            scrollView.topAnchor.constraint(equalTo: container.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            searchField.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            placeholderLabel.topAnchor.constraint(equalTo: container.topAnchor, constant: 4),
+        ]
         view = container
+        updateVisibility()
     }
 
     /// Scans the roots in the background and shows what it finds. Repeated
@@ -110,14 +146,40 @@ final class HistoryListViewController: NSViewController, NSTableViewDataSource, 
     private func applyQuery() {
         shown = HistoryStore.filter(sessions, query: searchField.stringValue)
         tableView.reloadData()
-        let empty = shown.isEmpty
-        placeholderLabel.isHidden = !empty
         placeholderLabel.stringValue = sessions.isEmpty ? "No saved sessions" : "No matches"
-        scrollView.isHidden = empty
+        updateVisibility()
+    }
+
+    /// Shows only what the state calls for: the search bar alone while
+    /// collapsed, and the heading with the list once it is open.
+    private func updateVisibility() {
+        guard isViewLoaded else { return }
+        NSLayoutConstraint.deactivate(isExpanded ? collapsedConstraints : expandedConstraints)
+        NSLayoutConstraint.activate(isExpanded ? expandedConstraints : collapsedConstraints)
+        headerLabel.isHidden = !isExpanded
+        let empty = shown.isEmpty
+        placeholderLabel.isHidden = !isExpanded || !empty
+        scrollView.isHidden = !isExpanded || empty
+        // The chevron points the way the list will move when pressed.
+        let expanded = isExpanded
+        toggleButton.image = NSImage(systemSymbolName: expanded ? "chevron.down" : "chevron.right",
+                                     accessibilityDescription: expanded ? "Hide sessions" : "Show sessions")
+        toggleButton.toolTip = expanded ? "Hide sessions" : "Show sessions"
+    }
+
+    @objc private func toggleExpanded() {
+        isExpanded.toggle()
+        onExpandedChange?(isExpanded)
     }
 
     @objc private func searchChanged() {
-        applyQuery()
+        // A query opens the list, so its matches are visible rather than
+        // filtering a list the user cannot see.
+        if !searchField.stringValue.trimmingCharacters(in: .whitespaces).isEmpty, !isExpanded {
+            toggleExpanded()
+        } else {
+            applyQuery()
+        }
     }
 
     @objc private func openClickedSession() {
