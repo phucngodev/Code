@@ -2,13 +2,11 @@
   <img src="assets/icon.svg" width="96" height="96" alt="Code icon">
 </p>
 
-<h1 align="center">Code</h1>
+# Code
 
-<p align="center">A more productive terminal.</p>
+A more productive terminal.
 
-<p align="center">
-  <a href="https://github.com/phucngodev/code/releases/latest">Download</a>
-</p>
+[Download](https://github.com/phucngodev/code/releases/latest)
 
 A native, small, fast terminal built on Ghostty. Code is a Swift and AppKit app with no Electron and no web view, so it starts fast and stays out of the way. No accounts, no telemetry.
 
@@ -23,12 +21,9 @@ It ships a separate build for each chip, so a download carries only what your Ma
 
 A single universal build for both chips would be about 37 MB, roughly double the download.
 
-<p align="center">
-  <img src="assets/preview-light.png"  alt="Demo light">
-</p>
-<p align="center">
-  <img src="assets/preview-dark.png"  alt="Demo dark">
-</p>
+![Demo light](assets/preview-light.png)
+
+![Demo dark](assets/preview-dark.png)
 
 ## Why Code?
 
