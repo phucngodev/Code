@@ -34,7 +34,7 @@ struct AgentAdapter {
         return true
     }
 
-    static let all: [AgentAdapter] = [.claudeCode, .openCode, .codex, .pi]
+    static let all: [AgentAdapter] = [.claudeCode, .openCode, .codex, .pi, .pig]
 
     static func named(_ name: String) -> AgentAdapter? {
         all.first { $0.name == name }

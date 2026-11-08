@@ -125,6 +125,7 @@ final class HistoryStoreTests: XCTestCase {
     func testResumeOnlyForAgentsCodeKnows() {
         XCTAssertEqual(HistoryStore.resume(agent: "claude", id: "abc-123"), .init(binary: "claude", arguments: ["--resume", "abc-123"]))
         XCTAssertEqual(HistoryStore.resume(agent: "pi", id: "01a1aead-e504"), .init(binary: "pi", arguments: ["--session", "01a1aead-e504"]))
+        XCTAssertEqual(HistoryStore.resume(agent: "pig", id: "01a1aead-e504"), .init(binary: "pig", arguments: ["--session", "01a1aead-e504"]))
         XCTAssertNil(HistoryStore.resume(agent: "codex", id: "abc"))
         XCTAssertNil(HistoryStore.resume(agent: "opencode", id: "abc"))
         XCTAssertNil(HistoryStore.resume(agent: "claude", id: "bad id; rm"))
@@ -141,5 +142,31 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertEqual(session.id, "01a1aead-e504-7477-8866-791346960bd4")
         XCTAssertEqual(session.resume, .init(binary: "pi", arguments: ["--session", "01a1aead-e504-7477-8866-791346960bd4"]))
         XCTAssertEqual(session.title, "hello")
+    }
+
+    func testDefaultRootsIncludeEveryAgentsConfigFolder() {
+        let home = URL(fileURLWithPath: "/Users/me")
+
+        let roots = HistoryStore.defaultRoots(home: home)
+
+        XCTAssertEqual(roots.first { $0.agent == "pi" }?.url.path, home.appendingPathComponent(".pi/agent/sessions").path)
+        XCTAssertEqual(roots.first { $0.agent == "pig" }?.url.path, home.appendingPathComponent(".config/pig/agent/sessions").path)
+    }
+
+    func testScanFindsPigSessionsInTheirWorkingDirectoryFolder() throws {
+        // PiG nests each session under the encoded working directory, as Pi does.
+        let folder = directory.appendingPathComponent("--Users-me-project--", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let file = folder.appendingPathComponent("2026-11-06T02-26-34-373Z_01a1aead-e504-7477-8866-791346960bd4.jsonl")
+        try [
+            #"{"type":"session","version":3,"id":"01a1aead-e504-7477-8866-791346960bd4","cwd":"/Users/me/project"}"#,
+            #"{"type":"message","message":{"role":"user","content":[{"type":"text","text":"hello"}]}}"#,
+        ].joined(separator: "\n").write(to: file, atomically: true, encoding: .utf8)
+
+        let sessions = HistoryStore.scan(roots: [.init(url: directory, agent: "pig")])
+
+        XCTAssertEqual(sessions.map(\.id), ["01a1aead-e504-7477-8866-791346960bd4"])
+        XCTAssertEqual(sessions.first?.agent, "pig")
+        XCTAssertEqual(sessions.first?.resume, .init(binary: "pig", arguments: ["--session", "01a1aead-e504-7477-8866-791346960bd4"]))
     }
 }

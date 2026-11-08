@@ -8,7 +8,7 @@ struct AgentExtension: Equatable {
     let agent: String
     /// The folder the agent discovers extensions in.
     let directory: URL
-    /// The file name the extension takes there.
+    /// The name the extension takes there, a file or folder name.
     let name: String
     /// The bundled extension Code ships.
     let source: URL
@@ -31,9 +31,17 @@ struct AgentExtension: Equatable {
     }
 
     /// Copies the bundled extension over the installed one, returning false
-    /// when it is already up to date.
+    /// when it is already up to date. An extension is a file or a folder of
+    /// source files, depending on the agent's runtime.
     @discardableResult
     func install(fileManager: FileManager = .default) throws -> Bool {
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: source.path, isDirectory: &isDirectory) else {
+            throw InstallError.sourceMissing(source.path)
+        }
+        if isDirectory.boolValue {
+            return try installDirectory(fileManager: fileManager)
+        }
         guard let bundled = fileManager.contents(atPath: source.path) else {
             throw InstallError.sourceMissing(source.path)
         }
@@ -41,6 +49,26 @@ struct AgentExtension: Equatable {
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         try bundled.write(to: destination, options: .atomic)
         return true
+    }
+
+    /// Copies each top-level file of a folder extension, returning false when
+    /// every file at the destination already matches.
+    private func installDirectory(fileManager: FileManager) throws -> Bool {
+        let files = try fileManager.contentsOfDirectory(at: source, includingPropertiesForKeys: [.isRegularFileKey])
+            .filter { url in
+                guard !url.lastPathComponent.hasPrefix(".") else { return false }
+                return (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+            }
+        var changed = false
+        for file in files {
+            let contents = try Data(contentsOf: file)
+            let installed = destination.appendingPathComponent(file.lastPathComponent)
+            if fileManager.contents(atPath: installed.path) == contents { continue }
+            try fileManager.createDirectory(at: destination, withIntermediateDirectories: true)
+            try contents.write(to: installed, options: .atomic)
+            changed = true
+        }
+        return changed
     }
 }
 
@@ -67,7 +95,8 @@ enum AgentExtensions {
                     resources: URL? = Bundle.main.resourceURL,
                     environment: [String: String] = ProcessInfo.processInfo.environment) -> [AgentExtension] {
         guard let resources else { return [] }
-        return [pi(home: home, resources: resources, environment: environment)].compactMap { $0 }
+        return [pi(home: home, resources: resources, environment: environment),
+                pig(home: home, resources: resources)].compactMap { $0 }
     }
 
     /// Pi's extension, in `~/.pi/agent/extensions` unless the user set
@@ -80,5 +109,14 @@ enum AgentExtensions {
                               directory: agentDirectory.appendingPathComponent("extensions"),
                               name: "code.ts",
                               source: resources.appendingPathComponent(Pi.extensionResource))
+    }
+
+    /// PiG's extension, in `~/.config/pig/agent/extensions`.
+    static func pig(home: URL, resources: URL) -> AgentExtension? {
+        let agentDirectory = home.appendingPathComponent(".config/pig/agent")
+        return AgentExtension(agent: "PiG",
+                              directory: agentDirectory.appendingPathComponent("extensions"),
+                              name: "code",
+                              source: resources.appendingPathComponent(Pig.extensionResource))
     }
 }

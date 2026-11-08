@@ -47,6 +47,7 @@ enum HistoryStore {
             Root(url: home.appendingPathComponent(".claude/projects"), agent: "claude"),
             Root(url: home.appendingPathComponent(".codex/sessions"), agent: "codex"),
             Root(url: home.appendingPathComponent(".pi/agent/sessions"), agent: "pi"),
+            Root(url: home.appendingPathComponent(".config/pig/agent/sessions"), agent: "pig"),
         ]
     }
 
@@ -126,6 +127,7 @@ enum HistoryStore {
         switch agent {
         case "claude": return .init(binary: "claude", arguments: ["--resume", id])
         case "pi": return .init(binary: "pi", arguments: ["--session", id])
+        case "pig": return .init(binary: "pig", arguments: ["--session", id])
         default: return nil
         }
     }

@@ -10,7 +10,7 @@ A more productive terminal.
 
 A native, small, fast terminal built on Ghostty. Code is a Swift and AppKit app with no Electron and no web view, so it starts fast and stays out of the way. No accounts, no telemetry.
 
-Run Claude Code, Codex, OpenCode and Pi side by side in split panes, each in its own workspace with its own path.
+Run Claude Code, Codex, OpenCode, Pi and PiG side by side in split panes, each in its own workspace with its own path.
 
 It ships a separate build for each chip, so a download carries only what your Mac needs:
 
@@ -29,7 +29,7 @@ A single universal build for both chips would be about 37 MB, roughly double the
 
 **Native and fast.** Code is a Swift and AppKit app powered by libghostty. There is no Electron and no web view.
 
-**Made for agents.** Code shows what Claude Code, Codex, OpenCode and Pi are doing in each workspace, and tells you when one finishes or needs you. See [Agents](#agents).
+**Made for agents.** Code shows what Claude Code, Codex, OpenCode, Pi and PiG are doing in each workspace, and tells you when one finishes or needs you. See [Agents](#agents).
 
 **Private and simple.** No account, no telemetry, no tracking. Your terminal is yours.
 
@@ -65,7 +65,7 @@ Click the <kbd>?</kbd> button in the title bar to see every shortcut.
 
 ## Agents
 
-Run `claude`, `codex`, `opencode` or `pi` in a Code terminal and the workspace shows what it is doing:
+Run `claude`, `codex`, `opencode`, `pi` or `pig` in a Code terminal and the workspace shows what it is doing:
 
 | Dot           | Meaning                                          |
 | ------------- | ------------------------------------------------ |
@@ -75,7 +75,7 @@ Run `claude`, `codex`, `opencode` or `pi` in a Code terminal and the workspace s
 
 Looking at the terminal clears the green dot. A terminal you are not looking at also gets a macOS notification, which focuses it when clicked, and a sound: one when an agent needs you, another when it finishes. Pick the sounds, or turn them and the notifications off, in **Settings › Notifications**.
 
-Code does this through the agents' own hooks and plugins. For Claude, Codex and OpenCode it adds them at each launch, without writing to `~/.claude`, `~/.codex` or `~/.config/opencode`. Pi is not shadowed on PATH: once Pi has a config folder, Code installs its extension into `~/.pi/agent/extensions` at each launch, so `which pi` keeps pointing at your own install. An agent started outside Code behaves exactly as before. There is nothing to set up for fish and zsh. Two things need a step from you:
+Code does this through the agents' own hooks and plugins. For Claude, Codex and OpenCode it adds them at each launch, without writing to `~/.claude`, `~/.codex` or `~/.config/opencode`. Pi and PiG are not shadowed on PATH: once Pi has a config folder, Code installs its extension into `~/.pi/agent/extensions`, and once PiG has one, Code installs its Go extension into `~/.config/pig/agent/extensions`, at each launch, so `which pi` and `which pig` keep pointing at your own installs. An agent started outside Code behaves exactly as before. There is nothing to set up for fish and zsh. Two things need a step from you:
 
 **Bash.** Code cannot add itself to bash. Put this at the end of `~/.bashrc` or `~/.bash_profile`:
 

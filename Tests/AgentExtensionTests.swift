@@ -54,6 +54,33 @@ final class AgentExtensionTests: XCTestCase {
         XCTAssertEqual(byDefault?.directory.path, root.appendingPathComponent(".pi/agent/extensions").path)
     }
 
+    func testPigUsesTheConfigFolder() {
+        let resources = root.appendingPathComponent("Resources")
+
+        let ext = AgentExtensions.pig(home: root, resources: resources)
+
+        XCTAssertEqual(ext?.directory.path, root.appendingPathComponent(".config/pig/agent/extensions").path)
+        XCTAssertEqual(ext?.name, "code")
+        XCTAssertEqual(ext?.source.path, resources.appendingPathComponent("agents/pig/code").path)
+    }
+
+    func testInstallCopiesAFolderExtension() throws {
+        let source = root.appendingPathComponent("bundled")
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try "module code".write(to: source.appendingPathComponent("go.mod"), atomically: true, encoding: .utf8)
+        try "package code".write(to: source.appendingPathComponent("extension.go"), atomically: true, encoding: .utf8)
+        let ext = AgentExtension(agent: "PiG", directory: root.appendingPathComponent("extensions"),
+                                 name: "code", source: source)
+
+        XCTAssertTrue(try ext.install(), "the first install writes the folder")
+        XCTAssertEqual(try String(contentsOf: ext.destination.appendingPathComponent("extension.go"), encoding: .utf8), "package code")
+        XCTAssertFalse(try ext.install(), "the folder is already up to date")
+
+        try "package code // newer".write(to: source.appendingPathComponent("extension.go"), atomically: true, encoding: .utf8)
+        XCTAssertTrue(try ext.install(), "a changed file is written again")
+        XCTAssertEqual(try String(contentsOf: ext.destination.appendingPathComponent("extension.go"), encoding: .utf8), "package code // newer")
+    }
+
     func testInstallAllCopiesEveryExtension() throws {
         let ext = extensionInstalling(try makeSource("code"))
 

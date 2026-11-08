@@ -25,7 +25,7 @@ enum ClaudeHookFixtures {
 
 final class AgentAdapterTests: XCTestCase {
     func testNamesAreUniqueAndEveryAdapterHasABinary() {
-        XCTAssertEqual(AgentAdapter.all.map(\.name), ["claude", "opencode", "codex", "pi"])
+        XCTAssertEqual(AgentAdapter.all.map(\.name), ["claude", "opencode", "codex", "pi", "pig"])
         XCTAssertEqual(Set(AgentAdapter.all.map(\.name)).count, AgentAdapter.all.count)
         XCTAssertEqual(Set(AgentAdapter.all.map(\.binary)).count, AgentAdapter.all.count)
         for adapter in AgentAdapter.all {
@@ -40,6 +40,7 @@ final class AgentAdapterTests: XCTestCase {
         XCTAssertNil(AgentAdapter.claudeCode.translateNotification)
         XCTAssertNil(AgentAdapter.openCode.translateNotification)
         XCTAssertNil(AgentAdapter.pi.translateNotification)
+        XCTAssertNil(AgentAdapter.pig.translateNotification)
         XCTAssertNotNil(AgentAdapter.codex.translateNotification)
     }
 }
@@ -408,6 +409,23 @@ final class PiTests: XCTestCase {
     }
 }
 
+final class PigTests: XCTestCase {
+    func testExtensionIsBundledInTheAppResources() {
+        XCTAssertEqual(Pig.extensionResource, "agents/pig/code")
+    }
+
+    func testPigIsNotShadowedAndLaunchesAsTyped() throws {
+        let bin = FileManager.default.temporaryDirectory.appendingPathComponent("code-pig-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: bin) }
+        FileManager.default.createFile(atPath: bin.appendingPathComponent("pig").path, contents: Data("#!/bin/sh\n".utf8), attributes: [.posixPermissions: 0o755])
+
+        XCTAssertFalse(AgentAdapter.pig.needsShim, "PiG loads its extension from its config folder, so its binary is not shadowed")
+        let launcher = try XCTUnwrap(AgentLauncher(.pig, arguments: ["hello"], environment: ["PATH": bin.path], cde: "/cde"))
+        XCTAssertEqual(launcher.arguments, ["pig", "hello"], "PiG launches with the arguments as typed")
+    }
+}
+
 final class AgentLauncherTests: XCTestCase {
     var root: URL!
 
@@ -522,12 +540,15 @@ final class AgentLauncherTests: XCTestCase {
     func testShimsSkipAgentsThatReadTheirExtensionsFromAFolder() throws {
         let shims = root.appendingPathComponent("shims").path
         try makeExecutable("bin", "pi")
-        // A shim left by an older Code, from when Pi was shadowed, goes.
+        try makeExecutable("bin", "pig")
+        // Shims left by an older Code, from when Pi and PiG were shadowed, go.
         try makeExecutable("shims", "pi")
+        try makeExecutable("shims", "pig")
 
         try AgentShims.install(in: shims, path: shims + ":" + path("bin"), cde: "/cde")
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: shims + "/pi"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: shims + "/pig"))
     }
 
     func testRemovesTheShimsOfQuitCodesAndClosedTerminals() throws {
