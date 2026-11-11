@@ -42,6 +42,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Holding a key in the terminal must repeat it. Without this, macOS
+        // raises its press-and-hold accent menu over the terminal instead.
+        UserDefaults.standard.register(defaults: ["ApplePressAndHoldEnabled": false])
         // Agents that read an extension from their own folder get Code's now,
         // so none of them has to be set up by hand.
         AgentExtensions.installAll()
