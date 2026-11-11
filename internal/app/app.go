@@ -222,6 +222,9 @@ func (a *App) newWindow(frame *model.WindowSession) *WindowState {
 	if len(store.Workspaces) == 0 {
 		w.newWorkspace("")
 	}
+	// A restored window's focused pane takes the keyboard too, as one made
+	// fresh does, so its terminal starts focused and its cursor blinks.
+	w.focusSelected()
 	return w
 }
 

@@ -26,10 +26,8 @@ type Surface struct {
 	startErr error
 	// started is set once start has attempted to launch the program, so a
 	// failure is not retried every frame. closed keeps close idempotent.
-	started  bool
-	closed   bool
-	exited   bool
-	exitCode int
+	started bool
+	closed  bool
 
 	handle    ui.Handle
 	wantFocus bool
@@ -43,6 +41,15 @@ func (s *Surface) LeafTitle() string { return s.title }
 
 // LeafDir is the terminal's working directory, or empty.
 func (s *Surface) LeafDir() string { return s.dir }
+
+// setDir records the directory the shell reported, keeping the last one when a
+// report is empty, as a shell that has not reported one yet must not clear
+// where Code started the pane.
+func (s *Surface) setDir(dir string) {
+	if dir != "" {
+		s.dir = dir
+	}
+}
 
 // start launches the surface's program the first time a view shows it, so a
 // restored session does not run a shell per pane before it is looked at.
@@ -87,18 +94,19 @@ func (s *Surface) start() {
 			set := s.term
 			s.owner.update(func() {
 				s.title = title
+				// A shell that sets its title before reporting a directory, or
+				// one whose shell integration is off, must not clear where Code
+				// started the pane: keep the last directory until a new one comes.
 				if set != nil {
-					s.dir = set.Dir()
+					s.setDir(set.Dir())
 				}
 				s.owner.markChanged()
 			})
 		},
-		OnExit: func(code int) {
-			s.owner.update(func() {
-				s.exited = true
-				s.exitCode = code
-				s.owner.markChanged()
-			})
+		OnExit: func(_ int) {
+			// A surface whose program ended is closed, as Ghostty does when a
+			// shell logs out, so its pane does not linger on the exit message.
+			s.owner.update(func() { s.owner.surfaceExited(s) })
 		},
 		OnNotify: func(title, body string) {
 			s.owner.update(func() { s.owner.routeNotification(s, body) })

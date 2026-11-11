@@ -49,6 +49,46 @@ func TestLiveNavKeybind(t *testing.T) {
 	}
 }
 
+func TestLivePaneSwitchKeybind(t *testing.T) {
+	w := liveWindow(t, nil)
+	before := w.focusedSurface().id
+	tester := ui.NewTester(w.view, 900, 600)
+	tester.Frame()
+	tester.Key(ui.Cmd|ui.Super, ui.KeyBracketRight)
+	tester.Frame()
+	next := w.focusedSurface().id
+	if next == before {
+		t.Fatal("the next-pane shortcut did not move the focus")
+	}
+	tester.Key(ui.Cmd|ui.Super, ui.KeyBracketLeft)
+	tester.Frame()
+	if got := w.focusedSurface().id; got != before {
+		t.Fatalf("the previous-pane shortcut moved to %v, want %v", got, before)
+	}
+}
+
+// TestLiveNavMovesKeyboardFocus checks that navigating panes hands the target
+// pane the keyboard, not only the model's focus. A pane that already exists
+// must take the focus explicitly, since AutoFocus only fires on the frame an
+// element is born.
+func TestLiveNavMovesKeyboardFocus(t *testing.T) {
+	w := liveWindow(t, nil)
+	tab := w.store.Selected().SelectedTab()
+	left, right := tab.Panes.Leaves()[0], tab.Panes.Leaves()[1]
+	var ctx *ui.Context
+	view := func(c *ui.Context) { ctx = c; w.view(c) }
+	tester := ui.NewTester(view, 900, 600)
+	tester.Frame()
+	if !right.handle.Focused(ctx) {
+		t.Fatal("the new split should start with the keyboard")
+	}
+	tester.Key(ui.Cmd|ui.Alt, ui.KeyLeft)
+	tester.Frame()
+	if !left.handle.Focused(ctx) {
+		t.Fatal("navigating left should give the left pane the keyboard")
+	}
+}
+
 func TestLiveResizeKeybind(t *testing.T) {
 	w := liveWindow(t, []string{"alt+shift+l=resize_split:right,20"})
 	tester := ui.NewTester(w.view, 900, 600)

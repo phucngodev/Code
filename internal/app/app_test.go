@@ -8,6 +8,7 @@ import (
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/phucngodev/code/internal/agent"
 	"github.com/phucngodev/code/internal/config"
 	"github.com/phucngodev/code/internal/model"
 )
@@ -53,6 +54,20 @@ func TestWindowBindingOverridesDefault(t *testing.T) {
 	}
 }
 
+func TestWindowBindingHasPaneSwitching(t *testing.T) {
+	a := &App{}
+	w := &WindowState{app: a, store: model.NewStore[*Surface]()}
+	found := map[ui.Key]bool{}
+	for _, b := range w.windowBindings() {
+		if b.mods == ui.Cmd|ui.Super && (b.key == ui.KeyBracketLeft || b.key == ui.KeyBracketRight) {
+			found[b.key] = true
+		}
+	}
+	if !found[ui.KeyBracketLeft] || !found[ui.KeyBracketRight] {
+		t.Fatalf("windowBindings should bind both pane switch keys, got %v", found)
+	}
+}
+
 func TestSplitCommand(t *testing.T) {
 	got := splitCommand(`/bin/zsh -lic "echo hi"`)
 	want := []string{"/bin/zsh", "-lic", "echo hi"}
@@ -83,8 +98,8 @@ func TestShortcutsViewRenders(t *testing.T) {
 	a := &App{}
 	tester := ui.NewTester(a.shortcutsView, 520, 620)
 	tester.Frame()
-	if !tester.HasText("New workspace") {
-		t.Fatal("the shortcuts window should list New workspace")
+	if !tester.HasText("Switch workspace") {
+		t.Fatal("the shortcuts window should list its workspace shortcuts")
 	}
 	if !tester.HasText("Keyboard Shortcuts") && !tester.HasText("Tabs and panes") {
 		t.Fatal("the shortcuts window should list its sections")
@@ -192,12 +207,178 @@ func TestPanePositions(t *testing.T) {
 	}
 }
 
+func TestSidebarRowThemeTextOnGray(t *testing.T) {
+	base := ui.Theme{Background: ui.RGBA(255, 255, 255, 255), Text: ui.RGBA(0, 0, 0, 255)}
+	got := sidebarRowTheme(&base)
+	if got.Accent != got.InactiveAccent {
+		t.Fatal("a chosen workspace should look the same in and out of focus")
+	}
+	if got.AccentText != base.Text {
+		t.Fatalf("text on the chosen row should be the theme's text, got %v", got.AccentText)
+	}
+	if got.Radius != 0 {
+		t.Fatalf("workspace rows should stay square, got radius %v", got.Radius)
+	}
+}
+
+func TestCloseSurfaceRefocusesSurvivor(t *testing.T) {
+	w := testWindow(t)
+	w.newWorkspace("")
+	tab := w.store.Selected().SelectedTab()
+	w.splitFocused(model.DirRight)
+	survivor := tab.Panes.Leaves()[0]
+	survivor.wantFocus = false
+
+	w.closeSurface(tab.Focused())
+
+	if tab.Focused() != survivor {
+		t.Fatal("closing the focused pane should focus the survivor")
+	}
+	if !survivor.wantFocus {
+		t.Fatal("the survivor should take the keyboard")
+	}
+}
+
+func TestClosingViewsRefocusTheTerminal(t *testing.T) {
+	cases := []struct {
+		name  string
+		close func(w *WindowState)
+	}{
+		{"palette", func(w *WindowState) { w.palette.open = true; w.closePalette() }},
+		{"find", func(w *WindowState) { w.find.open = true; w.closeFind() }},
+		{"rename", func(w *WindowState) {
+			ws := w.store.Selected()
+			w.renaming, w.renameBuf = ws.ID, "Renamed"
+			w.commitRename(ws)
+		}},
+		{"sidebar", func(w *WindowState) { w.toggleSidebar() }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := testWindow(t)
+			w.newWorkspace("")
+			s := w.focusedSurface()
+			s.wantFocus = false
+
+			tc.close(w)
+
+			if !s.wantFocus {
+				t.Fatalf("closing %s should return the keyboard to the terminal", tc.name)
+			}
+		})
+	}
+}
+
+func TestPaneDropRefocusesDragged(t *testing.T) {
+	w := testWindow(t)
+	w.newWorkspace("")
+	tab := w.store.Selected().SelectedTab()
+	w.splitFocused(model.DirRight)
+	left, right := tab.Panes.Leaves()[0], tab.Panes.Leaves()[1]
+	left.wantFocus = false
+
+	w.applyPaneDrop(paneDropAction{dragged: left, target: right, tab: tab, split: true, dir: model.DirLeft})
+
+	if tab.Focused() != left {
+		t.Fatal("a dropped pane should take the focus")
+	}
+	if !left.wantFocus {
+		t.Fatal("a dropped pane should take the keyboard")
+	}
+}
+
+func TestPaneDimmedOnlyUnfocused(t *testing.T) {
+	a := &Surface{id: "a"}
+	b := &Surface{id: "b"}
+	tab := model.NewTab("t", a)
+	if paneDimmed(tab, a, false) {
+		t.Fatal("a lone pane should never dim")
+	}
+	tab.Panes.Split(a, model.DirRight, b)
+	tab.Focus(b)
+	if paneDimmed(tab, b, true) {
+		t.Fatal("the focused pane should not dim")
+	}
+	if !paneDimmed(tab, a, true) {
+		t.Fatal("the unfocused pane should dim")
+	}
+	if paneDimmed(tab, a, false) {
+		t.Fatal("a pane should not dim when the tab is not split")
+	}
+}
+
 func TestSessionWriterFlush(t *testing.T) {
 	path := t.TempDir() + "/session.json"
 	w := newSessionWriter(path)
 	w.flush(&model.Session{})
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("session not written: %v", err)
+	}
+}
+
+func TestSurfaceExitedClosesItsPane(t *testing.T) {
+	w := testWindow(t)
+	w.newWorkspace("")
+	tab := w.store.Selected().SelectedTab()
+	w.splitFocused(model.DirRight)
+	exited := tab.Focused()
+
+	w.surfaceExited(exited)
+
+	if leaves := tab.Panes.Leaves(); len(leaves) != 1 || leaves[0] == exited {
+		t.Fatalf("exited pane should be gone, leaves = %v", leaves)
+	}
+	if !exited.closed {
+		t.Fatal("the exited surface should be closed")
+	}
+}
+
+func TestSurfaceExitedOnLastPaneClosesTab(t *testing.T) {
+	w := testWindow(t)
+	w.newWorkspace("")
+	ws := w.store.Selected()
+	exited := ws.SelectedTab().Focused()
+
+	w.surfaceExited(exited)
+
+	if len(ws.Tabs) != 0 {
+		t.Fatalf("the tab of a lone exited pane should close, tabs = %d", len(ws.Tabs))
+	}
+}
+
+func TestSurfaceExitedIgnoresAnAlreadyClosedPane(t *testing.T) {
+	w := testWindow(t)
+	w.newWorkspace("")
+	tab := w.store.Selected().SelectedTab()
+	w.splitFocused(model.DirRight)
+	exited := tab.Focused()
+	exited.closed = true
+
+	w.surfaceExited(exited)
+
+	if leaves := tab.Panes.Leaves(); len(leaves) != 2 {
+		t.Fatalf("a closed pane should not be removed again, leaves = %v", leaves)
+	}
+}
+
+// testWindow is a window with just enough wiring for the store and the close
+// paths, so a pane can exit without a real terminal or window.
+func testWindow(t *testing.T) *WindowState {
+	t.Helper()
+	settings := config.LoadSettings(t.TempDir() + "/config")
+	a := &App{settings: settings, agents: agent.NewStore()}
+	return &WindowState{app: a, store: model.NewStore[*Surface]()}
+}
+
+func TestSurfaceKeepsDirWhenReportIsEmpty(t *testing.T) {
+	s := &Surface{dir: "/home/phuc/Projects"}
+	s.setDir("")
+	if s.dir != "/home/phuc/Projects" {
+		t.Fatalf("an empty report should keep the directory, got %q", s.dir)
+	}
+	s.setDir("/home/phuc/Code")
+	if s.dir != "/home/phuc/Code" {
+		t.Fatalf("a real report should replace the directory, got %q", s.dir)
 	}
 }
 

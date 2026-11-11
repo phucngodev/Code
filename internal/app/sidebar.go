@@ -53,12 +53,10 @@ func (w *WindowState) buildWorkspaceList(c *ui.Context) {
 	w.workspaceList.Selected = &w.workspaceSelected
 	w.workspaceSelected = selected
 	// The list paints the chosen row in the theme's accent, so it gets the
-	// sidebar's gray instead of the app accent, with the focus ring off.
-	t := c.Theme()
-	rowTheme := *t
-	rowTheme.Accent = t.Background.Mix(t.Text, 0.20)
-	rowTheme.InactiveAccent = rowTheme.Accent
-	rowTheme.Radius = 0
+	// sidebar's gray instead of the app accent, with the focus ring off. The
+	// accent's text goes with the gray, since the accent's own light text does
+	// not read on it.
+	rowTheme := sidebarRowTheme(c.Theme())
 	themed := ui.Themed(c, &rowTheme).Grow(1).MarginX(-10)
 	themed.Children(func() {
 		list := ui.List(c, &w.workspaceList, len(ws), func(i int) {
@@ -69,6 +67,18 @@ func (w *WindowState) buildWorkspaceList(c *ui.Context) {
 			w.focusSelected()
 		}
 	})
+}
+
+// sidebarRowTheme is the theme for the workspace list: the chosen row takes the
+// sidebar's gray instead of the app accent, with the theme's own text on it,
+// since the accent's light text does not read on a gray.
+func sidebarRowTheme(t *ui.Theme) ui.Theme {
+	rowTheme := *t
+	rowTheme.Accent = t.Background.Mix(t.Text, 0.20)
+	rowTheme.InactiveAccent = rowTheme.Accent
+	rowTheme.AccentText = t.Text
+	rowTheme.Radius = 0
+	return rowTheme
 }
 
 func (w *WindowState) buildWorkspaceRow(c *ui.Context, ws *model.Workspace[*Surface]) {
@@ -332,6 +342,7 @@ func (w *WindowState) commitRename(ws *model.Workspace[*Surface]) {
 	}
 	w.renaming = ""
 	w.store.Notify()
+	w.focusSelected()
 }
 
 // openPalette opens the command palette.
@@ -346,6 +357,7 @@ func (w *WindowState) openPalette() {
 
 func (w *WindowState) closePalette() {
 	w.palette.open = false
+	w.focusSelected()
 	w.markChanged()
 }
 

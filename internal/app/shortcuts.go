@@ -20,7 +20,6 @@ type shortcutSection struct {
 // shortcutList is every shortcut Code adds, grouped by what it does.
 var shortcutList = []shortcutSection{
 	{"Workspaces", []shortcut{
-		{"New workspace", []string{"⌘", "N"}},
 		{"Switch workspace", []string{"⌥", "1–8"}},
 		{"Last workspace", []string{"⌥", "9"}},
 		{"Previous workspace", []string{"⇧", "⌘", "["}},
@@ -42,6 +41,8 @@ var shortcutList = []shortcutSection{
 		{"Close tab", []string{"⌥", "⌘", "W"}},
 	}},
 	{"Pane focus", []shortcut{
+		{"Focus the next pane", []string{"⌘", "]"}},
+		{"Focus the previous pane", []string{"⌘", "["}},
 		{"Focus the pane on the left", []string{"⌥", "⌘", "←"}},
 		{"Focus the pane on the right", []string{"⌥", "⌘", "→"}},
 		{"Focus the pane above", []string{"⌥", "⌘", "↑"}},

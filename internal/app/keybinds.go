@@ -1,6 +1,8 @@
 package app
 
 import (
+	"log"
+	"os"
 	"strconv"
 	"strings"
 
@@ -24,9 +26,19 @@ type windowBinding struct {
 // same key, and an unbind drops it.
 func (w *WindowState) applyWindowKeybinds(c *ui.Context) {
 	for _, b := range w.windowBindings() {
-		c.OnWindowShortcut(b.mods, b.key, b.run)
+		b := b
+		c.OnWindowShortcut(b.mods, b.key, func() {
+			if debugKeys() {
+				log.Printf("code: window shortcut mods=%b key=%v", b.mods, b.key)
+			}
+			b.run()
+		})
 	}
 }
+
+// debugKeys reports whether CODE_DEBUG_KEYS is set, which logs every key the
+// window shortcuts and the terminals see, to find one that does not fire.
+func debugKeys() bool { return os.Getenv("CODE_DEBUG_KEYS") != "" }
 
 func (w *WindowState) windowBindings() []windowBinding {
 	type keyID struct {
@@ -46,6 +58,10 @@ func (w *WindowState) windowBindings() []windowBinding {
 	add(ui.Cmd|ui.Alt, ui.KeyRight, func() { w.goToPane(model.NavRight) })
 	add(ui.Cmd|ui.Alt, ui.KeyUp, func() { w.goToPane(model.NavUp) })
 	add(ui.Cmd|ui.Alt, ui.KeyDown, func() { w.goToPane(model.NavDown) })
+	// Ghostty's pane switching: the next and previous pane in layout order,
+	// which is Command+bracket on macOS and Control+Super+bracket elsewhere.
+	add(ui.Cmd|ui.Super, ui.KeyBracketLeft, func() { w.goToPane(model.NavPrevious) })
+	add(ui.Cmd|ui.Super, ui.KeyBracketRight, func() { w.goToPane(model.NavNext) })
 	for _, kb := range w.app.keybinds {
 		id := keyID{kb.Mods, kb.Key}
 		switch kb.Action {
@@ -281,6 +297,9 @@ func splitResize(arg string) (model.Direction, float32) {
 func (a *App) runAppKeybind(w *WindowState, mods ui.Modifiers, key ui.Key) bool {
 	if w == nil {
 		return false
+	}
+	if debugKeys() {
+		log.Printf("code: terminal key mods=%b key=%v", mods, key)
 	}
 	for _, kb := range a.keybinds {
 		if kb.Mods != mods || kb.Key != key {

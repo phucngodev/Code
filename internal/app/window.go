@@ -265,8 +265,8 @@ func (w *WindowState) buildTerminalArea(c *ui.Context) ui.Element {
 			w.buildSurface(c, tab, zoomed, false)
 			return
 		}
-		dim := len(tab.Panes.Leaves()) > 1
-		w.buildPaneTree(c, tab, tab.Panes.Root, dim)
+		split := len(tab.Panes.Leaves()) > 1
+		w.buildPaneTree(c, tab, tab.Panes.Root, split)
 	})
 	if drop := w.paneDrop; drop != nil {
 		w.paneDrop = nil
@@ -285,9 +285,9 @@ func (w *WindowState) agentRunning(surfaces []*Surface) bool {
 	return false
 }
 
-func (w *WindowState) buildPaneTree(c *ui.Context, tab *model.Tab[*Surface], n *model.Node[*Surface], dim bool) {
+func (w *WindowState) buildPaneTree(c *ui.Context, tab *model.Tab[*Surface], n *model.Node[*Surface], split bool) {
 	if n.HasLeaf {
-		w.buildSurface(c, tab, n.Leaf, dim)
+		w.buildSurface(c, tab, n.Leaf, split)
 		return
 	}
 	if n.Pct <= 0 || n.Pct >= 100 {
@@ -295,20 +295,26 @@ func (w *WindowState) buildPaneTree(c *ui.Context, tab *model.Tab[*Surface], n *
 	}
 	if n.Axis == model.Horizontal {
 		ui.SplitPercent(c, &n.Pct, func() {
-			w.buildPaneTree(c, tab, n.First, dim)
+			w.buildPaneTree(c, tab, n.First, split)
 		}, func() {
-			w.buildPaneTree(c, tab, n.Second, dim)
+			w.buildPaneTree(c, tab, n.Second, split)
 		}).Fill()
 	} else {
 		ui.SplitVerticalPercent(c, &n.Pct, func() {
-			w.buildPaneTree(c, tab, n.First, dim)
+			w.buildPaneTree(c, tab, n.First, split)
 		}, func() {
-			w.buildPaneTree(c, tab, n.Second, dim)
+			w.buildPaneTree(c, tab, n.Second, split)
 		}).Fill()
 	}
 }
 
-func (w *WindowState) buildSurface(c *ui.Context, tab *model.Tab[*Surface], s *Surface, dim bool) {
+// paneDimmed reports whether a pane draws dimmed: only an unfocused pane in a
+// tab that shows more than one, as Ghostty's unfocused-split-opacity.
+func paneDimmed(tab *model.Tab[*Surface], s *Surface, split bool) bool {
+	return split && s != tab.Focused()
+}
+
+func (w *WindowState) buildSurface(c *ui.Context, tab *model.Tab[*Surface], s *Surface, split bool) {
 	s.start()
 	if s.term == nil {
 		msg := "Could not start the terminal."
@@ -323,12 +329,21 @@ func (w *WindowState) buildSurface(c *ui.Context, tab *model.Tab[*Surface], s *S
 	t := c.Theme()
 	pane := ui.Box(c).Fill()
 	pane.Children(func() {
-		el := terminal.View(c, s.term).Key(s.id).Bind(&s.handle).Fill()
+		// Key the terminal before it builds, so the terminal's own view reads
+		// the focus while it builds: Element.Key runs after View has built,
+		// leaving the element's built identity different from the focused
+		// one, and its cursor would draw unfocused and never blink.
+		c.Key(s.id)
+		el := terminal.View(c, s.term).Bind(&s.handle).Fill()
 		if s.wantFocus {
-			el = el.AutoFocus()
+			// Focus, not AutoFocus: a pane that already exists is not born
+			// this frame, so AutoFocus would leave the keyboard where it was
+			// when navigation moves focus to it. wantFocus is cleared now, so
+			// this only claims the focus for the frame it was asked for.
+			el = el.Focus()
 			s.wantFocus = false
 		}
-		if dim {
+		if paneDimmed(tab, s, split) {
 			el = el.Opacity(float32(w.app.settings.Float(config.KeyUnfocusedSplitOpacity, 0.7)))
 		}
 		if s.handle.Focused(c) && c.WindowActive() {
@@ -411,6 +426,7 @@ func (w *WindowState) applyPaneDrop(drop paneDropAction) {
 	}
 	drop.tab.Focus(drop.dragged)
 	w.store.Notify()
+	w.focusSelected()
 }
 
 func minFloat(a, b float32) float32 {
@@ -640,6 +656,16 @@ func (w *WindowState) reveal(s *Surface) {
 	w.markChanged()
 }
 
+// surfaceExited closes a pane whose program ended, as Ghostty does when a
+// shell logs out. It is a no-op once the pane is already closing, so the
+// hang-up a close sends does not remove the pane twice.
+func (w *WindowState) surfaceExited(s *Surface) {
+	if s.closed {
+		return
+	}
+	w.closeSurface(s)
+}
+
 func (w *WindowState) closeSurface(s *Surface) {
 	_, tab, ok := w.store.WorkspaceContaining(s)
 	if !ok {
@@ -649,6 +675,7 @@ func (w *WindowState) closeSurface(s *Surface) {
 		tab.RemovePane(s)
 		s.close()
 		w.store.Notify()
+		w.focusSelected()
 	} else {
 		w.closeTab(tab)
 	}
@@ -770,6 +797,7 @@ func (w *WindowState) toggleSidebar() {
 		w.history.loaded = false
 		w.workspaceList = ui.ListState{}
 	}
+	w.focusSelected()
 	w.markChanged()
 }
 
@@ -841,6 +869,7 @@ func (w *WindowState) closeFind() {
 	if s := w.focusedSurface(); s != nil && s.term != nil {
 		s.term.EndSearch()
 	}
+	w.focusSelected()
 	w.markChanged()
 }
 

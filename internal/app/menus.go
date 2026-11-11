@@ -52,7 +52,7 @@ func (a *App) buildMenu() *mygo.Menu {
 
 	fileMenu := []*mygo.MenuItem{
 		{Label: "New Window", Accelerator: "Shift+CmdOrCtrl+N", Click: func(*mygo.MenuItem, *mygo.Window) { a.newWindow(nil) }},
-		item("New Workspace", "CmdOrCtrl+N", func(w *WindowState) { w.newWorkspace("") }),
+		item("New Workspace", "", func(w *WindowState) { w.newWorkspace("") }),
 		item("New Tab", "CmdOrCtrl+T", func(w *WindowState) { w.newTab("") }),
 		mygo.Separator(),
 		item("Close Pane", "CmdOrCtrl+W", func(w *WindowState) {
