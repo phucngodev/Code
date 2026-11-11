@@ -9,87 +9,42 @@ concurrency:
   group: release-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Publishing a release writes to the repo; the cache service uses the Actions
-# runtime token, so no personal access token is needed.
 permissions:
   contents: write
 
 jobs:
   release:
     name: Build and publish
-    # GitHub's macOS 26 image ships Xcode 26.x, which is what Ghostty v1.4
-    # builds against. Change this label if you need a different macOS.
+    # Disk images and signing need macOS, and Zig cross-compiles libghostty-vt
+    # for Linux from here too.
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          # The tag history is what stamp-version.sh reads the version from.
-          fetch-depth: 0
+      - uses: actions/checkout@v4
 
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
+      - uses: actions/setup-go@v5
         with:
-          xcode-version: latest-stable
+          go-version-file: go.mod
 
       - name: Install Zig
         uses: mlugg/setup-zig@v2
         with:
-          # Must match build.zig.zon's minimum_zig_version in the submodule.
+          # Must match Ghostty's minimum_zig_version for the pinned release.
           version: 0.17.0
 
-      - name: Install xcodegen
-        run: brew install xcodegen
+      - name: Test
+        run: go test ./...
 
-      - name: Toolchain versions
-        run: |
-          xcodebuild -version
-          zig version
-          xcodegen --version
+      - name: Build libghostty-vt
+        run: ./scripts/build-libghostty.sh "$(cat ghostty.version)" all
 
-      - name: Resolve ghostty revision
-        id: ghostty
-        run: echo "sha=$(git rev-parse HEAD:Vendor/ghostty)" >> "$GITHUB_OUTPUT"
+      # One app per platform and architecture, each carrying only its own
+      # libghostty-vt: darwin arm64 and amd64 (signed, with a disk image) and
+      # linux amd64 and arm64 (the executable with its packages).
+      - name: Build the apps
+        run: ./scripts/build-release.sh darwin/arm64 darwin/amd64 linux/amd64 linux/arm64
 
-      # libghostty takes several minutes to compile, so reuse the built
-      # framework until the pinned ghostty commit or its build script changes.
-      - name: Restore GhosttyKit
-        id: cache-ghosttykit
-        uses: actions/cache@v4
-        with:
-          path: |
-            Vendor/GhosttyKit.xcframework
-            Vendor/GhosttyResources
-            Vendor/GhosttyKit.stamp
-          key: ghosttykit-${{ runner.os }}-${{ steps.ghostty.outputs.sha }}-${{ hashFiles('scripts/build-ghosttykit.sh', 'scripts/ghosttykit-stamp.sh', 'themes/**') }}
-
-      - name: Checkout ghostty submodule
-        if: steps.cache-ghosttykit.outputs.cache-hit != 'true'
-        run: git submodule update --init --depth 1 -- Vendor/ghostty
-
-      - name: Build libghostty
-        if: steps.cache-ghosttykit.outputs.cache-hit != 'true'
-        run: ./scripts/build-ghosttykit.sh
-
-      - name: Build and package
-        env:
-          CODE_SIGNING_ALLOWED: "NO"
-          CODE_SIGNING_REQUIRED: "NO"
-        run: ./scripts/build-release.sh
-
-      # - name: Test
-      #   run: >-
-      #     xcodebuild -scheme code
-      #     -derivedDataPath build
-      #     -destination 'platform=macOS'
-      #     CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
-      #     test
-
-      # These DMGs carry only the ad-hoc signature a runner can make, so they
-      # are not notarized. A tag can hold either this release or the notarized
-      # one scripts/release.py publishes, never both.
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -100,7 +55,9 @@ jobs:
           case "$tag" in
             *-rc.*) prerelease=--prerelease ;;
           esac
-          gh release create "$tag" dist/*.dmg \
+          # The disk images and the Linux packages, without the bare executables.
+          files=$(find build -type f \( -name '*.dmg' -o -name '*.tar.gz' -o -name '*.deb' -o -name '*.rpm' \))
+          gh release create "$tag" $files \
             --repo "$GITHUB_REPOSITORY" \
             --title "Code ${version}" \
             --generate-notes \

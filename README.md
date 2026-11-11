@@ -1,138 +1,180 @@
-<p align="center">
-  <img src="assets/icon.svg" width="96" height="96" alt="Code icon">
-</p>
+# Code (cross-platform)
 
-# Code
+Code is a terminal built on Ghostty's emulator, with split panes, workspaces
+and agent status. It is written in Go with mygo UI [MyGo](https://github.com/egoist/mygo)'s
+**native UI** — no web view, no Electron. It builds and runs on **macOS**
+(arm64 and amd64) and **Linux** (amd64 and arm64).
 
-A more productive terminal.
+## What is ported
 
-[Download](https://github.com/phucngodev/code/releases/latest)
+| Area | |
+|---|---|
+| Workspaces | sidebar list, accents, rename, reorder-ready model, per-workspace tabs |
+| Tabs | strip in the top bar, select, close, new |
+| Split panes | right/down, nested, drag-resized dividers, zoom, percentage ratios |
+| Pane focus | click, or ⌥⌘ + arrow keys |
+| Terminals | mygo `terminal` view: colors, Unicode, scrollback, mouse, clipboard, find |
+| Theme | Ghostty's `theme`, `font-family` list, `font-size`, `font-feature`, `adjust-cell-height`, `window-padding-*`, `macos-option-as-alt`; the chrome follows the terminal colors, and Code ships `modus` (the default), `everforest`, `gruvbox`, `kanagawa`, `nord` and `rosepine` |
+| Chrome | the tab strip and actions sit in the drawn title bar, under the window controls, with room left for the traffic lights |
+| Agents | Claude Code, Codex, OpenCode, Pi and PiG report through Code's `cde` helper: PATH shims for the hook-based agents, Code-installed extensions for Pi and PiG, the full hook translation, status dots, unread counts, desktop notifications and a Dock badge |
+| Settings | a window over `~/.config/code/config` in Ghostty's format |
+| Command palette | ⌘P, lists workspaces, tabs and panes, recent first |
+| Session | windows (size, position, sidebar state), workspaces, tabs and split layouts restored on relaunch |
+| Menus | Code / File / Edit / View / Workspace / Window / Help |
+| Keyboard shortcuts | listed in the Help window |
 
-A native, small, fast terminal built on Ghostty. Code is a Swift and AppKit app with no Electron and no web view, so it starts fast and stays out of the way. No accounts, no telemetry.
+On macOS, Code sets its own `AppleFontSmoothing` default to 0 before the first
+frame, so text is drawn thin rather than thickened by the system's Core Text
+font smoothing, as the Swift app's is. Set `CODE_FONT_SMOOTHING=1` to keep the
+system's look.
 
-Run Claude Code, Codex, OpenCode, Pi and PiG side by side in split panes, each in its own workspace with its own path.
+## What is not ported yet
 
-It ships a separate build for each chip, so a download carries only what your Mac needs:
+These are deliberately out of this pass:
 
-| Build  | App   | DMG     |
-| ------ | ----- | ------- |
-| arm64  | 17 MB | 7.21 MB |
-| x86_64 | 17 MB | 7.54 MB |
+- alert **sounds** (the Settings controls persist but are not played),
+- secure keyboard entry, About/Licenses windows, translucent sidebar material.
 
-A single universal build for both chips would be about 37 MB, roughly double the download.
+## Requirements
 
-![Demo light](assets/preview-light.png)
+- [Go](https://go.dev/dl/) 1.27 or later.
+- Native UI needs nothing more; Linux builds need GTK 3.
+- The emulator library downloads once on first run (packaged builds embed it).
 
-![Demo dark](assets/preview-dark.png)
-
-## Why Code?
-
-**Native and fast.** Code is a Swift and AppKit app powered by libghostty. There is no Electron and no web view.
-
-**Made for agents.** Code shows what Claude Code, Codex, OpenCode, Pi and PiG are doing in each workspace, and tells you when one finishes or needs you. See [Agents](#agents).
-
-**Private and simple.** No account, no telemetry, no tracking. Your terminal is yours.
-
-## Install
-
-Code needs macOS 13 or later.
-
-1. Download the latest `.dmg` for your Mac from [releases](https://github.com/phucngodev/code/releases/latest) — `arm64` for Apple silicon, `x86_64` for Intel.
-2. Open it and drag Code into Applications.
-3. xattr -c /Applications/Code.app.
-4. Open Code.
-
-Code does not update itself. Download a newer `.dmg` from the same page to update.
-
-## Getting around
-
-Each project gets its own workspace in the sidebar, with its own tabs and split panes. A workspace is named after the git repository it's in, with its path and branch underneath. Code reopens everything as you left it.
-
-After a relaunch, restored terminals start when you first view them. Once started, they keep running when you switch to another tab or workspace.
-
-Drag workspaces up or down in the sidebar to reorder them. Code remembers their order when you reopen it.
-
-| Shortcut                              | Action           |
-| ------------------------------------- | ---------------- |
-| <kbd>⌘</kbd><kbd>N</kbd>              | New workspace    |
-| <kbd>⌘</kbd><kbd>T</kbd>              | New tab          |
-| <kbd>⌘</kbd><kbd>D</kbd>              | Split right      |
-| <kbd>⌥</kbd><kbd>1</kbd>–<kbd>9</kbd> | Switch workspace |
-| <kbd>⌘</kbd><kbd>1</kbd>–<kbd>9</kbd> | Switch tab       |
-| <kbd>⌘</kbd><kbd>,</kbd>              | Settings         |
-
-Click the <kbd>?</kbd> button in the title bar to see every shortcut.
-
-## Agents
-
-Run `claude`, `codex`, `opencode`, `pi` or `pig` in a Code terminal and the workspace shows what it is doing:
-
-| Dot           | Meaning                                          |
-| ------------- | ------------------------------------------------ |
-| Blue, pulsing | The agent is working                             |
-| Yellow        | The agent is waiting for you                     |
-| Green         | A turn finished while you were looking elsewhere |
-
-Looking at the terminal clears the green dot. A terminal you are not looking at also gets a macOS notification, which focuses it when clicked, and a sound: one when an agent needs you, another when it finishes. Pick the sounds, or turn them and the notifications off, in **Settings › Notifications**.
-
-Code does this through the agents' own hooks and plugins. For Claude, Codex and OpenCode it adds them at each launch, without writing to `~/.claude`, `~/.codex` or `~/.config/opencode`. Pi and PiG are not shadowed on PATH: once Pi has a config folder, Code installs its extension into `~/.pi/agent/extensions`, and once PiG has one, Code installs its Go extension into `~/.config/pig/agent/extensions`, at each launch, so `which pi` and `which pig` keep pointing at your own installs. An agent started outside Code behaves exactly as before. There is nothing to set up for fish and zsh. Two things need a step from you:
-
-**Bash.** Code cannot add itself to bash. Put this at the end of `~/.bashrc` or `~/.bash_profile`:
-
-```bash
-[ -n "$CODE_CDE" ] && source "${CODE_CDE%/*}/../Resources/shell-integration/bash/code.bash"
-```
-
-**Codex.** Codex runs a hook only after you have reviewed it. The first time you start `codex` in Code, run `/hooks` inside it and trust the Code hooks. Codex remembers your answer, and asks again only if Code moves to a different location or an update changes its hooks.
-
-To run an agent without Code's hooks for one session, start it with `CODE_AGENTS_DISABLED=1`.
-
-## Configuration
-
-Choose **Code › Settings…** (<kbd>⌘</kbd><kbd>,</kbd>) to pick the shell, a theme for light mode and one for dark mode, the font, cursor, window opacity and blur, and agent sounds. The sidebar and title bar follow the theme, so a dark theme gets a dark sidebar even in light mode.
-
-Settings writes to `~/.config/code/config`, a plain text file in Ghostty's format that you can also edit by hand. The first time Code opens, it copies your Ghostty config into this file, so your fonts, theme and keybindings carry over. After that, Code reads only its own file. Settings changes only the lines it needs to and keeps your comments. **Settings › Advanced** opens the file in your editor and lists any problems in it.
-
-Code aims to support every Ghostty setting, but some don't work in Code yet. If a setting you rely on has no effect, [open an issue](https://github.com/phucngodev/code/issues/new).
-
-## Build from source
-
-You need Xcode 27, Zig 0.17 and xcodegen (`brew install zig xcodegen`).
+## Run and build
 
 ```sh
-git clone --recursive https://github.com/phucngodev/code.git && cd code
-./scripts/build-ghosttykit.sh   # builds libghostty, slow, only needed once
-xcodegen generate               # writes code.xcodeproj from project.yml
-open code.xcodeproj
+go run .                 # run the development app
+go test ./...            # the model, config, agent and view tests
+go tool mygo dev         # dev with auto-restart (after `go get -tool github.com/egoist/mygo/cmd/mygo`)
+go tool mygo build       # package for this machine under build/<os>-<arch>/
 ```
 
-To build without opening Xcode, run `xcodebuild -scheme code -configuration Release build -derivedDataPath build`.
+The MyGo module is pinned in `go.mod`; `mygo.json` names the app **Code**
+(identifier `dev.phucngo.code`).
 
-To build the release DMGs for both chips, run `./scripts/build-release.sh`. It writes `dist/Code-<version>-arm64.dmg` and `dist/Code-<version>-x86_64.dmg`. They are signed for local use only, not notarized.
+## The libghostty version
 
-`Vendor/ghostty` is a git submodule pinned to Ghostty's latest stable release. `patches/` holds build fixes for Xcode 27 that landed upstream after that release, and the build script applies them.
-
-### Tests
+MyGo's terminal plugin pins its own `libghostty-vt` revision (a Ghostty
+`main` commit). Code instead builds the library it wants and points the plugin
+at it, so it can track Ghostty releases — the macOS app is on **v1.4.0**.
 
 ```sh
-xcodebuild test -scheme code -destination 'platform=macOS'
+scripts/build-libghostty.sh                  # host platform, v1.4.0
+scripts/build-libghostty.sh v1.5.0           # another tag or commit
+scripts/build-libghostty.sh v1.5.0 all        # darwin arm64+amd64, linux amd64+arm64
 ```
 
-The tests cover the models and terminal lifecycle without launching the app.
+It builds `libghostty-vt` with Zig (the version Ghostty asks for), installs it
+in this directory's `resources/` as `libghostty-vt-local-<os>-<arch>.<ext>`,
+and records the ref in `resources/libghostty-vt-local.version`. `main.go` sets
+`MYGO_GHOSTTY_VT` to that file, which the terminal plugin loads first, so both
+`go run .` and a packaged app use it. `MYGO_GHOSTTY_VT` set yourself still wins.
 
-### Layout
+Set `GHOSTTY_SRC` to build from a checkout you already have at the tag,
+instead of cloning one into a cache. The built libraries are git-ignored —
+run the script once after cloning, or Code falls back to MyGo's pinned
+revision. The revision to use is kept in `ghostty.version`.
 
-| Directory            | Contents                                                                                         |
-| -------------------- | ------------------------------------------------------------------------------------------------ |
-| `Sources/Ghostty/`   | The wrapper around libghostty's C API, with the runtime, config, input and terminal view         |
-| `Sources/Workspace/` | The workspace, tab and pane model. It's generic over `PaneLeaf`, so tests run without terminals. |
-| `Sources/Agent/`     | Each terminal's agent status, its notifications and sounds, and the socket agents report to      |
-| `Sources/Settings/`  | The Settings window and the reader and writer for Code's config file                             |
-| `Sources/UI/`        | The AppKit window, with the sidebar on the left and terminals on the right                       |
-| `Tests/`             | Unit tests for the model                                                                         |
+`mygo build` also bundles MyGo's own pinned `libghostty-vt`, which Code does
+not use. `scripts/package.sh` builds the app without a disk image, removes
+that copy, re-signs and makes the disk image, so a shipped app holds only the
+library Code uses:
 
-`Vendor/GhosttyKit.xcframework` and `Vendor/GhosttyResources` are build outputs and aren't committed.
+```sh
+scripts/build-libghostty.sh all
+scripts/package.sh -platform darwin/universal
+```
 
-## License
+## Build every platform
 
-Code is released under the [MIT License](LICENSE).
+Each platform and architecture gets its own app, carrying only its own
+`libghostty-vt`, so no download holds two chips' worth. `scripts/build-release.sh`
+builds and packages them:
+
+```sh
+scripts/build-release.sh                       # all four
+scripts/build-release.sh darwin/arm64          # or darwin/amd64, linux/amd64, linux/arm64
+```
+
+macOS apps are signed and turned into disk images; Linux apps are the
+executable with its `.deb` and `.tar.gz`. On Linux the shared library is
+stripped (`internal/elfstrip`) after Zig builds it, since Zig keeps its debug
+sections otherwise.
+
+## Install on Linux
+
+The Linux build folder holds `install.sh`, `code.desktop`, the icons and the
+archive. To install Code for the current user (no root), run the script from
+that folder:
+
+```sh
+sh install.sh
+```
+
+It installs the app in `~/.local/code.app`, writes
+`~/.local/share/applications/code.desktop` (with the app's absolute path and
+icon, so Code shows in the applications menu), links `~/.local/bin/code`, and
+refreshes the desktop database. `sh install.sh --uninstall` removes it.
+
+On Arch Linux the same folder holds a `PKGBUILD`, so `makepkg -si` installs
+Code with pacman into `/opt/code` and `/usr/share/applications`. This app uses
+native UI, so its packages need GTK alone, not WebKitGTK.
+
+## Layout
+
+```
+main.go                 the app entry point
+cmd/cde                 reports agent events to a running Code
+internal/config         the Ghostty-format config document and typed settings
+internal/model          pane tree, workspaces, tabs, the saved session
+internal/agent          the event protocol, session store, socket listener
+internal/history        the agents' saved sessions, read from disk
+internal/app            the application, windows, views, menus and dialogs
+```
+
+The model and config packages know nothing about terminals or widgets, so
+they are unit-tested without a window. The views are tested with `ui.NewTester`.
+
+## Where Code keeps its files
+
+| | |
+|---|---|
+| Config | `~/.config/code/config` (`$CODE_CONFIG` overrides it) |
+| Themes | `~/.config/code/themes` |
+| Session | `~/.config/code/session.json` |
+| Agent socket | `~/.config/code/agent.<pid>.sock` |
+
+The config file uses Ghostty's syntax, so existing Ghostty themes and options
+carry over, and the first launch imports Ghostty's own config.
+
+## Agent status
+
+Code supports **Claude Code**, **Codex**, **OpenCode**, **Pi** and **PiG**. Each
+shell Code starts gets Code's shim directory in front of `PATH`, so typing an
+agent's name runs it through `cde launch`, which starts the real binary with
+Code's hooks or environment added, without touching the agent's own config:
+
+- **Claude** gets Code's hooks through `--settings`, merged with any the user
+  passed.
+- **Codex** gets them through `-c` overrides, plus the notification settings
+  Code reads to tell when it is waiting.
+- **OpenCode** gets `OPENCODE_CONFIG_CONTENT` naming Code's plugins (v1 and
+  v2).
+- **Pi** and **PiG** run no hooks; Code installs its extension into their
+  config folders at launch when those exist.
+
+A hook calls `cde hook <agent>`, which reads the agent's JSON and sends an
+event over Code's Unix socket. OpenCode's plugins and Pi's and PiG's
+extensions call `cde event` directly. The app binary also acts as `cde`, so a
+single build serves both.
+
+```sh
+cde event working   --agent claude --detail "Read src/main.go"
+cde event needsInput --agent claude --detail "Approve this command?"
+cde ping
+```
+
+The event kinds are `sessionStarted`, `turnStarted`, `working`, `needsInput`,
+`turnEnded`, `sessionEnded` and `attention`. Start an agent with
+`CODE_AGENTS_DISABLED=1` to run it without Code's hooks for one session.

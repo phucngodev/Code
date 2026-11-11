@@ -3,22 +3,27 @@
 1. if a code comment explains how instead of why its unncessary, your code is too complicated, delete the comment and make the code better
 2. Do not refer to local files and folders in you code comments for example, the comment below is a bad comment because it refers to ../ghostty
    > # Builds libghostty from ../ghostty (branch code-build: v1.3.1 + two Xcode 27)
-3. if you have fixed something in the terminal, close the old debug build if running, and start a new one. Start it with an empty environment, the way the Dock does, so its terminals don't inherit your session's variables (`CLAUDECODE`, `CLAUDE_CODE_*`, `CODE_*`, `GHOSTTY_*`); otherwise an agent run inside it thinks it is nested in yours:
+3. if you have fixed something in the terminal, close the old build if running, and start a new one. Start it with an empty environment, the way the Dock does, so its terminals don't inherit your session's variables (`CLAUDECODE`, `CLAUDE_CODE_*`, `CODE_*`); otherwise an agent run inside it thinks it is nested in yours:
 
    ```
-   pkill -f "Debug/Code.app/Contents/MacOS/Code"
-   env -i /usr/bin/open <BUILT_PRODUCTS_DIR>/Code.app
+   pkill -f "Code.app/Contents/MacOS/Code"
+   env -i /usr/bin/open build/darwin-arm64/Code.app
    ```
 
-   Plain `open` and `osascript ... activate` both pass the caller's environment to the app. Match `Contents/MacOS/Code` in `pkill`: a shorter pattern also kills agents started in the debug build, whose arguments carry its `cde` path, and `pkill -x Code` kills the installed Code too.
+   Plain `open` and `osascript ... activate` both pass the caller's environment to the app. Match `Contents/MacOS/Code` in `pkill`: a shorter pattern also kills agents started in it, whose arguments carry the app's `cde` path, and `pkill -x Code` kills an installed Code too.
 
-4. every keyboard shortcut Code adds must be listed in the Keyboard Shortcuts window (the ? button in the title bar). The list is written by hand in `KeyboardShortcuts.all`, so add the new shortcut there whenever you add, change or remove one, named for what it does and in the section it belongs to. Open the window to check it, and add the shortcut to the site's keyboard shortcuts page at the next release.
+4. every keyboard shortcut Code adds must be listed in the Keyboard Shortcuts window (the list is `shortcutList` in `internal/app/shortcuts.go`), so add the new shortcut there whenever you add, change or remove one, named for what it does and in the section it belongs to. Open the window to check it, and add the shortcut to the site's keyboard shortcuts page at the next release.
 
 # Build
 
-use this command to build: `xcodebuild -scheme code -configuration Release build -derivedDataPath build`
+This is a Go app. Build and test it with:
 
-For local per-architecture DMGs without notarizing, run `scripts/build-release.sh`. It writes `dist/Code-<version>-arm64.dmg` and `-x86_64.dmg`.
+```sh
+go build ./...
+go test ./...
+```
+
+Run the development app with `go run .` or `go tool mygo dev`. Package a release for a platform with `go tool mygo build` (or `scripts/package.sh`, which also strips MyGo's unused libghostty-vt and signs). It needs the libghostty-vt build for the target first: `scripts/build-libghostty.sh` (see the README).
 
 # releases
 
@@ -28,7 +33,7 @@ Before cutting a release, update the website. It lives in the `phucngodev/getcod
 2. Add or update docs in `src/content/docs/` for the features that need them (see below).
 3. Write and revise both with the `/unslop` skill.
 4. Start the site's dev server, give the user the links to the new changelog entry (the page and its `.md`) and any docs you changed, and work their feedback in. Deploy only once they are happy.
-5. Deploy the site before `scripts/release.py <version> --publish`. The GitHub release links to the changelog page for its notes, so that page should be live first.
+5. Deploy the site before pushing the `v<version>` tag: the release workflow builds and publishes the release, and the GitHub release links to the changelog page for its notes, so that page should be live first.
 
 ## changelog
 

@@ -1,62 +1,47 @@
-#!/bin/bash
-# Builds Code for arm64 and x86_64, one DMG each, without notarizing.
-# For a notarized, publishable release use scripts/release.py.
+#!/usr/bin/env bash
+# Builds Code as a separate app for each platform and architecture, each with
+# its own libghostty-vt. macOS apps are signed and turned into disk images
+# (macOS only); Linux apps are the executable with its packages, cross-compiled
+# from any machine.
+#
+#   scripts/build-release.sh                    # all four
+#   scripts/build-release.sh darwin/arm64
+#   scripts/build-release.sh darwin/arm64 darwin/amd64
+#
+# Needs Zig (the version Ghostty asks for) and git to build libghostty-vt the
+# first time; see scripts/build-libghostty.sh. The results are under build/.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD="$ROOT/build/release"
-DIST="$ROOT/dist"
-ARCHS=(arm64 x86_64)
+root="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$root"
 
-command -v xcodegen >/dev/null || { echo "xcodegen not found; brew install xcodegen" >&2; exit 1; }
+targets=("$@")
+if [ ${#targets[@]} -eq 0 ]; then
+  targets=(darwin/arm64 darwin/amd64 linux/amd64 linux/arm64)
+fi
 
-mkdir -p "$DIST"
-(cd "$ROOT" && xcodegen generate --quiet)
+ref="$(tr -d '[:space:]' < ghostty.version)"
 
-VERSION=
-for arch in "${ARCHS[@]}"; do
-  echo "==> Building $arch"
-  # Xcode can run its own Info.plist processing after the version-stamping
-  # phase, so a reused derived data folder would un-stamp the version.
-  rm -rf "$BUILD/$arch"
-  # A CI runner has no signing identity and turns signing off through these.
-  xcodebuild -scheme code -configuration Release \
-    -derivedDataPath "$BUILD/$arch" \
-    -destination "platform=macOS,arch=$arch" \
-    ARCHS="$arch" ONLY_ACTIVE_ARCH=NO \
-    "CODE_SIGNING_ALLOWED=${CODE_SIGNING_ALLOWED:-YES}" \
-    "CODE_SIGNING_REQUIRED=${CODE_SIGNING_REQUIRED:-YES}" \
-    build -quiet
-
-  app="$BUILD/$arch/Build/Products/Release/Code.app"
-
-  # A fat app would carry the other chip's code and defeat the split.
-  archs="$(lipo -archs "$app/Contents/MacOS/Code")"
-  if [ "$archs" != "$arch" ]; then
-    echo "the $arch app is built for $archs" >&2
-    exit 1
+for target in "${targets[@]}"; do
+  os="${target%/*}"
+  arch="${target#*/}"
+  case "$os/$arch" in
+    darwin/arm64|darwin/amd64|linux/amd64|linux/arm64) ;;
+    *) echo "unsupported target $target (want darwin/arm64, darwin/amd64, linux/amd64 or linux/arm64)" >&2; exit 1 ;;
+  esac
+  # Build the matching libghostty-vt when it is not there yet.
+  if ! compgen -G "resources/$os-$arch/libghostty-vt-local-$os-$arch.*" >/dev/null; then
+    ./scripts/build-libghostty.sh "$ref" "$target"
   fi
-
-  # Both DMGs name one version, so the two builds must agree on it.
-  built="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"
-  if [ -n "$VERSION" ] && [ "$VERSION" != "$built" ]; then
-    echo "$arch is version $built, but the first build was $VERSION" >&2
-    exit 1
-  fi
-  VERSION="$built"
 done
 
-for arch in "${ARCHS[@]}"; do
-  echo "==> Packaging $arch"
-  app="$BUILD/$arch/Build/Products/Release/Code.app"
-  dmg="$DIST/Code-$VERSION-$arch.dmg"
-
-  # An Applications link beside the app makes the image drag-to-install like a
-  # downloaded one. ditto copies the bundle so its signature stays valid.
-  stage="$(mktemp -d)"
-  ditto "$app" "$stage/Code.app"
-  ln -s /Applications "$stage/Applications"
-  hdiutil create -quiet -volname "Code" -srcfolder "$stage" -ov -format UDZO "$dmg"
-  rm -rf "$stage"
-  echo "    $dmg"
+for target in "${targets[@]}"; do
+  case "$target" in
+    darwin/*) ./scripts/package.sh -platform "$target" ;;
+    linux/*)  go tool mygo build -platform "$target" ;;
+  esac
 done
+
+echo
+echo "Built:"
+ls -d build/*/ 2>/dev/null | sed 's/^/  /'

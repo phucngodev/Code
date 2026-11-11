@@ -1,0 +1,165 @@
+package app
+
+import (
+	"fmt"
+
+	"github.com/egoist/mygo"
+
+	"github.com/phucngodev/code/internal/model"
+)
+
+// buildMenu builds the application menu. Menu commands act on the window the
+// event came from, falling back to the focused one.
+func (a *App) buildMenu() *mygo.Menu {
+	item := func(label, accelerator string, fn func(w *WindowState)) *mygo.MenuItem {
+		return &mygo.MenuItem{
+			Label:       label,
+			Accelerator: accelerator,
+			Click: func(_ *mygo.MenuItem, win *mygo.Window) {
+				if w := a.windowFor(win); w != nil {
+					fn(w)
+				}
+			},
+		}
+	}
+	windowItem := func(label, accelerator string, fn func(*mygo.Window)) *mygo.MenuItem {
+		return &mygo.MenuItem{
+			Label:       label,
+			Accelerator: accelerator,
+			Click: func(_ *mygo.MenuItem, win *mygo.Window) {
+				if win == nil {
+					win = mygo.FocusedWindow()
+				}
+				if win != nil {
+					fn(win)
+				}
+			},
+		}
+	}
+
+	appMenu := []*mygo.MenuItem{
+		{Role: mygo.RoleAbout},
+		mygo.Separator(),
+		{Label: "Settings…", Accelerator: "CmdOrCtrl+,", Click: func(*mygo.MenuItem, *mygo.Window) { a.ShowSettings() }},
+		{Label: "Reload Configuration", Accelerator: "Shift+CmdOrCtrl+,", Click: func(*mygo.MenuItem, *mygo.Window) { a.ReloadConfig() }},
+		mygo.Separator(),
+		{Role: mygo.RoleHide},
+		{Role: mygo.RoleHideOthers},
+		{Role: mygo.RoleUnhide},
+		mygo.Separator(),
+		{Role: mygo.RoleQuit},
+	}
+
+	fileMenu := []*mygo.MenuItem{
+		{Label: "New Window", Accelerator: "Shift+CmdOrCtrl+N", Click: func(*mygo.MenuItem, *mygo.Window) { a.newWindow(nil) }},
+		item("New Workspace", "CmdOrCtrl+N", func(w *WindowState) { w.newWorkspace("") }),
+		item("New Tab", "CmdOrCtrl+T", func(w *WindowState) { w.newTab("") }),
+		mygo.Separator(),
+		item("Close Pane", "CmdOrCtrl+W", func(w *WindowState) {
+			if s := w.focusedSurface(); s != nil {
+				w.closeSurface(s)
+			}
+		}),
+		item("Close Tab", "Alt+CmdOrCtrl+W", func(w *WindowState) {
+			if ws := w.store.Selected(); ws != nil {
+				if tab := ws.SelectedTab(); tab != nil {
+					w.closeTab(tab)
+				}
+			}
+		}),
+		{Label: "Close Window", Accelerator: "Shift+CmdOrCtrl+W", Click: func(_ *mygo.MenuItem, win *mygo.Window) {
+			if win != nil {
+				win.Close()
+			}
+		}},
+		mygo.Separator(),
+		item("Split Right", "CmdOrCtrl+D", func(w *WindowState) { w.splitFocused(model.DirRight) }),
+		item("Split Down", "Shift+CmdOrCtrl+D", func(w *WindowState) { w.splitFocused(model.DirDown) }),
+	}
+
+	editMenu := []*mygo.MenuItem{
+		item("Find…", "CmdOrCtrl+F", func(w *WindowState) { w.openFind() }),
+		item("Find Next", "CmdOrCtrl+G", func(w *WindowState) { w.searchNext() }),
+		item("Find Previous", "Shift+CmdOrCtrl+G", func(w *WindowState) { w.searchPrevious() }),
+	}
+
+	viewMenu := []*mygo.MenuItem{
+		item("Toggle Sidebar", "CmdOrCtrl+B", func(w *WindowState) { w.toggleSidebar() }),
+		item("Go to…", "CmdOrCtrl+P", func(w *WindowState) { w.openPalette() }),
+		item("Zoom Pane", "Shift+CmdOrCtrl+Enter", func(w *WindowState) { w.toggleZoom() }),
+		mygo.Separator(),
+		windowItem("Enter Full Screen", "", func(win *mygo.Window) { win.SetFullScreen(!win.IsFullScreen()) }),
+	}
+
+	workspaceMenu := []*mygo.MenuItem{
+		item("Previous Workspace", "Shift+CmdOrCtrl+[", func(w *WindowState) { w.cycleWorkspace(-1) }),
+		item("Next Workspace", "Shift+CmdOrCtrl+]", func(w *WindowState) { w.cycleWorkspace(1) }),
+		item("Rename Workspace", "Shift+CmdOrCtrl+R", func(w *WindowState) {
+			if ws := w.store.Selected(); ws != nil {
+				w.beginRename(ws)
+			}
+		}),
+		mygo.Separator(),
+	}
+	for i := 1; i <= 9; i++ {
+		i := i
+		accelerator := fmt.Sprintf("Alt+%d", i)
+		label := fmt.Sprintf("Switch to Workspace %d", i)
+		if i == 9 {
+			label = "Last Workspace"
+		}
+		workspaceMenu = append(workspaceMenu, item(label, accelerator, func(w *WindowState) {
+			if i == 9 {
+				w.selectWorkspaceIndex(len(w.store.Workspaces) - 1)
+			} else {
+				w.selectWorkspaceIndex(i - 1)
+			}
+		}))
+	}
+	workspaceMenu = append(workspaceMenu, mygo.Separator())
+	for i := 1; i <= 9; i++ {
+		i := i
+		label := fmt.Sprintf("Switch to Tab %d", i)
+		if i == 9 {
+			label = "Last Tab"
+		}
+		workspaceMenu = append(workspaceMenu, item(label, fmt.Sprintf("CmdOrCtrl+%d", i), func(w *WindowState) {
+			if i == 9 {
+				if ws := w.store.Selected(); ws != nil {
+					w.selectTabIndex(len(ws.Tabs) - 1)
+				}
+			} else {
+				w.selectTabIndex(i - 1)
+			}
+		}))
+	}
+
+	windowMenu := []*mygo.MenuItem{
+		{Role: mygo.RoleMinimize, Accelerator: "CmdOrCtrl+M"},
+		{Role: mygo.RoleZoom},
+		mygo.Separator(),
+		windowItem("Fill", "Ctrl+Cmd+F", func(win *mygo.Window) { fillWindow(win) }),
+		windowItem("Center", "Ctrl+Cmd+X", func(win *mygo.Window) { centerWindow(win) }),
+		mygo.Separator(),
+		windowItem("Tile Left Half", "Ctrl+Cmd+Left", func(win *mygo.Window) { tileWindow(win, tileLeft) }),
+		windowItem("Tile Right Half", "Ctrl+Cmd+Right", func(win *mygo.Window) { tileWindow(win, tileRight) }),
+		windowItem("Tile Top Half", "Ctrl+Cmd+Up", func(win *mygo.Window) { tileWindow(win, tileTop) }),
+		windowItem("Tile Bottom Half", "Ctrl+Cmd+Down", func(win *mygo.Window) { tileWindow(win, tileBottom) }),
+		mygo.Separator(),
+		{Role: mygo.RoleFront},
+	}
+
+	helpMenu := []*mygo.MenuItem{
+		{Label: "Keyboard Shortcuts", Click: func(*mygo.MenuItem, *mygo.Window) { a.ShowShortcuts() }},
+	}
+
+	return mygo.NewMenu([]*mygo.MenuItem{
+		{Label: "Code", Submenu: appMenu},
+		{Label: "File", Submenu: fileMenu},
+		{Label: "Edit", Submenu: editMenu},
+		{Label: "View", Submenu: viewMenu},
+		{Label: "Workspace", Submenu: workspaceMenu},
+		{Label: "Window", Submenu: windowMenu},
+		{Label: "Help", Submenu: helpMenu},
+	})
+}

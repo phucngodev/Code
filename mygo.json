@@ -1,0 +1,17 @@
+{
+  "name": "Code",
+  "slug": "code",
+  "identifier": "dev.phucngo.code",
+  "version": "0.1.0",
+  "out": "build",
+  "main": ".",
+  "linux": {
+    "comment": "A more productive terminal",
+    "categories": ["System", "TerminalEmulator"],
+    "command": "code",
+    "webview": false
+  },
+  "macos": {
+    "minimumSystemVersion": "13.0"
+  }
+}
