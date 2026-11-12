@@ -1,2 +1,0 @@
-#!/bin/sh
-CODE_SHIM_DIR='fdf36750-8062-4156-a034-8ebd8600cc2e' exec '' launch codex "$@"

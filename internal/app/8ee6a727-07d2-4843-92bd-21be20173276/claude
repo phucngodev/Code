@@ -1,2 +1,0 @@
-#!/bin/sh
-CODE_SHIM_DIR='8ee6a727-07d2-4843-92bd-21be20173276' exec '' launch claude "$@"
