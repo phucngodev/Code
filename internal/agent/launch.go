@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -53,6 +54,8 @@ func NewLauncher(adapter Adapter, arguments []string, environment map[string]str
 
 // ResolveBinary finds the first executable named binary in path, skipping the
 // shim directory and the empty entries a shell reads as the current directory.
+// A Code shim is skipped even when a shell profile rewrote the directory's
+// path, so `cde launch` can never resolve the shim that called it.
 func ResolveBinary(binary, path, excluding string) (string, bool) {
 	excluded := standardize(excluding)
 	for _, directory := range strings.Split(path, string(os.PathListSeparator)) {
@@ -64,9 +67,29 @@ func ResolveBinary(binary, path, excluding string) (string, bool) {
 		if err != nil || info.IsDir() || info.Mode()&0o111 == 0 {
 			continue
 		}
+		if isCodeShim(candidate) {
+			continue
+		}
 		return candidate, true
 	}
 	return "", false
+}
+
+// isCodeShim reports whether a file is one of the launcher scripts Code
+// writes, rather than the agent's real binary. Only the first line is read:
+// the real binary can be many megabytes.
+func isCodeShim(path string) bool {
+	file, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	var head [256]byte
+	n, err := file.Read(head[:])
+	if err != nil && n == 0 {
+		return false
+	}
+	return strings.HasPrefix(string(head[:n]), "#!/bin/sh\n"+EnvShimDir+"=")
 }
 
 func standardize(path string) string {
@@ -74,14 +97,24 @@ func standardize(path string) string {
 		return ""
 	}
 	if abs, err := filepath.Abs(path); err == nil {
+		if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+			return resolved
+		}
 		return abs
 	}
 	return filepath.Clean(path)
 }
 
-// ShimsRoot is the directory holding every running Code's terminal shims.
+// ShimsRoot is the directory holding every running Code's terminal shims. It
+// lives in the user's own cache, not in a predictable shared directory under
+// /tmp: another user must not be able to create the shims that end up first
+// on this user's PATH.
 func ShimsRoot(pid int) string {
-	return filepath.Join(os.TempDir(), "code-shims", strconv.Itoa(pid))
+	base, err := os.UserCacheDir()
+	if err != nil || base == "" {
+		base = os.TempDir()
+	}
+	return filepath.Join(base, "code", "shims", strconv.Itoa(pid))
 }
 
 // ShimsDir is the shim directory of one terminal.
@@ -96,6 +129,15 @@ func InstallShims(directory, cde string, adapters []Adapter) error {
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return err
 	}
+	// MkdirAll leaves an existing directory as it is; refuse one another user
+	// could write into, since its contents run as this user.
+	info, err := os.Stat(directory)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() || info.Mode().Perm()&0o022 != 0 {
+		return fmt.Errorf("shim directory %s is writable by others", directory)
+	}
 	for _, adapter := range adapters {
 		shim := filepath.Join(directory, adapter.Binary)
 		if !adapter.NeedsShim() {
@@ -106,6 +148,13 @@ func InstallShims(directory, cde string, adapters []Adapter) error {
 			" exec " + shellQuote(cde) + " launch " + adapter.Name + ` "$@"` + "\n"
 		if existing, err := os.ReadFile(shim); err == nil && string(existing) == script {
 			continue
+		}
+		// A symlink left in a shim directory would make WriteFile overwrite
+		// its target instead of the shim.
+		if info, err := os.Lstat(shim); err == nil && info.Mode()&os.ModeSymlink != 0 {
+			if err := os.Remove(shim); err != nil {
+				return err
+			}
 		}
 		if err := os.WriteFile(shim, []byte(script), 0o755); err != nil {
 			return err

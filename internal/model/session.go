@@ -41,13 +41,16 @@ type TabSession struct {
 
 // Layout is a pane tree as saved: one terminal, or a split of two layouts.
 type Layout struct {
-	Kind   string  `json:"kind"`
-	ID     string  `json:"id,omitempty"`
-	Dir    string  `json:"workingDirectory,omitempty"`
-	Axis   Axis    `json:"axis,omitempty"`
-	Ratio  float64 `json:"ratio,omitempty"`
-	First  *Layout `json:"first,omitempty"`
-	Second *Layout `json:"second,omitempty"`
+	Kind string `json:"kind"`
+	ID   string `json:"id,omitempty"`
+	Dir  string `json:"workingDirectory,omitempty"`
+	// Command is the program a terminal was opened to resume, so a session
+	// reopened after a relaunch runs the same agent.
+	Command string  `json:"command,omitempty"`
+	Axis    Axis    `json:"axis,omitempty"`
+	Ratio   float64 `json:"ratio,omitempty"`
+	First   *Layout `json:"first,omitempty"`
+	Second  *Layout `json:"second,omitempty"`
 }
 
 // Frame is a window's saved position and size.
@@ -195,7 +198,9 @@ func LoadSession(path string) (*Session, error) {
 	return &session, nil
 }
 
-// Save writes the session as pretty JSON.
+// Save writes the session as pretty JSON. A unique temporary name keeps two
+// Code instances from writing the same file, and 0600 keeps the saved paths
+// private.
 func (s *Session) Save(path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
@@ -204,9 +209,21 @@ func (s *Session) Save(path string) error {
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".code-session-*")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	defer os.Remove(tmp.Name())
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
 }

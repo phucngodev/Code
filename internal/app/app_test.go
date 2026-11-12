@@ -2,11 +2,13 @@ package app
 
 import (
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 
@@ -108,7 +110,7 @@ func TestConfirmDialogCloseRuns(t *testing.T) {
 }
 
 func TestAgentStoreFollowsTerminalOwners(t *testing.T) {
-	a := &App{agents: agent.NewStore(), surfaceOwners: map[string]*WindowState{}}
+	a := testApp(t)
 	a.wireAgentStore()
 	if a.agents.IsLive("missing") {
 		t.Fatal("a terminal with no window should not be live")
@@ -144,8 +146,8 @@ func TestTabCloseIsAccessible(t *testing.T) {
 }
 
 func TestSettingsControlsAreLabelled(t *testing.T) {
-	settings := config.LoadSettings(t.TempDir() + "/config")
-	a := &App{settings: settings, settingsState: &settingsWindow{}}
+	a := testApp(t)
+	a.settingsState = &settingsWindow{}
 	tester := ui.NewTester(a.settingsView, 560, 560)
 	tester.Frame()
 	if _, ok := tester.AccessByRole(ui.RoleSwitch, "Copy on select"); !ok {
@@ -247,7 +249,8 @@ func TestTerminalKeybindMapping(t *testing.T) {
 }
 
 func TestWindowBindingOverridesDefault(t *testing.T) {
-	a := &App{keybinds: []config.Keybind{{Mods: ui.Cmd | ui.Alt, Key: ui.KeyLeft, Action: "new_tab"}}}
+	a := testApp(t)
+	a.keybinds = []config.Keybind{{Mods: ui.Cmd | ui.Alt, Key: ui.KeyLeft, Action: "new_tab"}}
 	w := &WindowState{app: a, store: model.NewStore[*Surface]()}
 	count := 0
 	for _, b := range w.windowBindings() {
@@ -261,7 +264,7 @@ func TestWindowBindingOverridesDefault(t *testing.T) {
 }
 
 func TestWindowBindingHasPaneSwitching(t *testing.T) {
-	a := &App{}
+	a := testApp(t)
 	w := &WindowState{app: a, store: model.NewStore[*Surface]()}
 	found := map[ui.Key]bool{}
 	for _, b := range w.windowBindings() {
@@ -287,21 +290,8 @@ func TestSplitCommand(t *testing.T) {
 	}
 }
 
-func TestThemeParts(t *testing.T) {
-	light, dark := parseThemeParts("light:Latte,dark:Mocha")
-	if light != "Latte" || dark != "Mocha" {
-		t.Fatalf("parts = %q, %q", light, dark)
-	}
-	if got := joinThemeParts("Latte", "Latte"); got != "Latte" {
-		t.Fatalf("join same = %q", got)
-	}
-	if got := joinThemeParts("Latte", "Mocha"); got != "light:Latte,dark:Mocha" {
-		t.Fatalf("join different = %q", got)
-	}
-}
-
 func TestShortcutsViewRenders(t *testing.T) {
-	a := &App{}
+	a := testApp(t)
 	tester := ui.NewTester(a.shortcutsView, 520, 620)
 	tester.Frame()
 	if !tester.HasText("Switch workspace") {
@@ -313,8 +303,8 @@ func TestShortcutsViewRenders(t *testing.T) {
 }
 
 func TestSettingsViewRenders(t *testing.T) {
-	settings := config.LoadSettings(t.TempDir() + "/config")
-	a := &App{settings: settings, settingsState: &settingsWindow{}}
+	a := testApp(t)
+	a.settingsState = &settingsWindow{}
 	tester := ui.NewTester(a.settingsView, 560, 560)
 	tester.Frame()
 	if !tester.HasText("General") {
@@ -323,8 +313,8 @@ func TestSettingsViewRenders(t *testing.T) {
 }
 
 func TestEverySettingsTabRenders(t *testing.T) {
-	settings := config.LoadSettings(t.TempDir() + "/config")
-	a := &App{settings: settings, settingsState: &settingsWindow{}}
+	a := testApp(t)
+	a.settingsState = &settingsWindow{}
 	tester := ui.NewTester(a.settingsView, 560, 560)
 	for tab := 0; tab < len(settingsTabs); tab++ {
 		a.settingsState.tab = tab
@@ -336,8 +326,7 @@ func TestEverySettingsTabRenders(t *testing.T) {
 }
 
 func TestEmptyWindowRenders(t *testing.T) {
-	settings := config.LoadSettings(t.TempDir() + "/config")
-	a := &App{settings: settings}
+	a := testApp(t)
 	w := &WindowState{app: a, store: model.NewStore[*Surface](), sidebarHidden: true}
 	tester := ui.NewTester(w.view, 900, 600)
 	tester.Frame()
@@ -347,8 +336,7 @@ func TestEmptyWindowRenders(t *testing.T) {
 }
 
 func TestTitleBarSettingsButton(t *testing.T) {
-	settings := config.LoadSettings(t.TempDir() + "/config")
-	a := &App{settings: settings}
+	a := testApp(t)
 	w := &WindowState{app: a, store: model.NewStore[*Surface](), sidebarHidden: true}
 	tester := ui.NewTester(w.view, 900, 600)
 	tester.Frame()
@@ -358,8 +346,7 @@ func TestTitleBarSettingsButton(t *testing.T) {
 }
 
 func TestCommandPaletteRenders(t *testing.T) {
-	settings := config.LoadSettings(t.TempDir() + "/config")
-	a := &App{settings: settings}
+	a := testApp(t)
 	w := &WindowState{app: a, store: model.NewStore[*Surface](), sidebarHidden: true}
 	w.openPalette()
 	tester := ui.NewTester(w.view, 900, 600)
@@ -406,12 +393,11 @@ func TestTabLabelPrefersTheReportedDirectory(t *testing.T) {
 
 func TestSurfaceDefaultsToWorkingDirectory(t *testing.T) {
 	project := t.TempDir()
-	path := t.TempDir() + "/config"
-	if err := os.WriteFile(path, []byte("working-directory = "+project+"\n"), 0o644); err != nil {
+	a := testApp(t)
+	if err := os.WriteFile(a.settings.Path(), []byte("working-directory = "+project+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	settings := config.LoadSettings(path)
-	a := &App{settings: settings}
+	a.settings.Reload()
 	w := &WindowState{app: a, store: model.NewStore[*Surface]()}
 	s := w.newSurface("id", "", "ws")
 	if s.LeafDir() != project {
@@ -592,13 +578,36 @@ func TestSurfaceExitedIgnoresAnAlreadyClosedPane(t *testing.T) {
 	}
 }
 
+// testApp is an app whose files and shims live in a temporary directory, so
+// a view that starts a terminal cannot write into the package directory.
+func testApp(t *testing.T) *App {
+	t.Helper()
+	dir := t.TempDir()
+	return &App{
+		paths: config.Paths{
+			Config:    filepath.Join(dir, "config"),
+			Themes:    filepath.Join(dir, "themes"),
+			Session:   filepath.Join(dir, "session.json"),
+			SocketDir: dir,
+		},
+		settings:      config.LoadSettings(filepath.Join(dir, "config")),
+		agents:        agent.NewStore(),
+		writer:        newSessionWriter(filepath.Join(dir, "session.json")),
+		byWindow:      map[*mygo.Window]*WindowState{},
+		surfaceOwners: map[string]*WindowState{},
+		notifications: map[string]*mygo.Notification{},
+		sidebarHidden: true,
+		sidebarWidth:  240,
+		shimsRoot:     filepath.Join(dir, "shims"),
+		cdePath:       "/usr/bin/true",
+	}
+}
+
 // testWindow is a window with just enough wiring for the store and the close
 // paths, so a pane can exit without a real terminal or window.
 func testWindow(t *testing.T) *WindowState {
 	t.Helper()
-	settings := config.LoadSettings(t.TempDir() + "/config")
-	a := &App{settings: settings, agents: agent.NewStore()}
-	return &WindowState{app: a, store: model.NewStore[*Surface]()}
+	return &WindowState{app: testApp(t), store: model.NewStore[*Surface]()}
 }
 
 func TestSurfaceKeepsDirWhenReportIsEmpty(t *testing.T) {

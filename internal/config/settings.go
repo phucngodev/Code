@@ -92,9 +92,20 @@ type Settings struct {
 	path string
 	doc  *Document
 	read error
+	// disk is the exact text last read from or written to the file. A watcher
+	// compares it with the file so Code's own write is not read back as an
+	// external edit.
+	disk string
+	// dirty is set while the document holds a change not yet written.
+	dirty bool
 	// OnSave runs after a successful write, to load the new file into the
 	// terminals.
 	OnSave func()
+
+	// ioMu serializes the file with mu: a read (ReloadIfChanged) cannot see a
+	// half-written file, and a save cannot be raced by a reload. It is always
+	// taken before mu.
+	ioMu sync.Mutex
 
 	// saveMu guards saveTimer, so a burst of changes writes once.
 	saveMu    sync.Mutex
@@ -124,9 +135,51 @@ func (s *Settings) Document() *Document {
 // by Reload Configuration. A read error is remembered the same way a load
 // error is, leaving the previous document in place.
 func (s *Settings) Reload() {
+	s.cancelScheduledSave()
+	s.ioMu.Lock()
+	defer s.ioMu.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.reload()
+}
+
+// ReloadIfChanged reads the file again only when it changed outside Code and
+// no edit is waiting to be saved. It reports whether the document changed, so
+// the caller can apply the new settings. Code's own writes are recognised by
+// disk and never reload. ioMu is held across the read and the compare, so a
+// save cannot slip between them and hand back a stale file.
+func (s *Settings) ReloadIfChanged() bool {
+	s.ioMu.Lock()
+	defer s.ioMu.Unlock()
+	data, err := os.ReadFile(s.path)
+	if err != nil {
+		return false
+	}
+	text := ParseDocument(string(data)).Text()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// A file that was unreadable but is readable again recovers the watcher,
+	// even if an edit was waiting to be saved at the time.
+	if s.read != nil {
+		s.doc = ParseDocument(text)
+		s.disk = text
+		s.dirty = false
+		s.read = nil
+		return true
+	}
+	if text == s.disk || s.dirty {
+		return false
+	}
+	s.doc = ParseDocument(text)
+	s.disk = text
+	return true
+}
+
+// Dirty reports whether a change is still waiting for its debounced write.
+func (s *Settings) Dirty() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.dirty
 }
 
 // ReadError returns why the file could not be read, if it could not.
@@ -153,18 +206,30 @@ func (s *Settings) UnsupportedKeys() []string {
 	return out
 }
 
+// reload is called with mu held. It always leaves a usable document, so a
+// config file that exists but cannot be read cannot crash the app on its
+// first getter.
 func (s *Settings) reload() {
 	data, err := os.ReadFile(s.path)
 	if errors.Is(err, os.ErrNotExist) {
 		s.doc = ParseDocument(Header)
+		s.disk = Header
+		s.dirty = false
 		s.read = nil
 		return
 	}
 	if err != nil {
 		s.read = err
+		if s.doc == nil {
+			s.doc = ParseDocument("")
+			s.disk = ""
+		}
 		return
 	}
-	s.doc = ParseDocument(string(data))
+	text := ParseDocument(string(data)).Text()
+	s.doc = ParseDocument(text)
+	s.disk = text
+	s.dirty = false
 	s.read = nil
 }
 
@@ -251,6 +316,7 @@ func (s *Settings) Set(key, value string) {
 	} else {
 		s.doc.Set(key, value)
 	}
+	s.dirty = true
 	s.mu.Unlock()
 	s.scheduleSave()
 }
@@ -259,6 +325,7 @@ func (s *Settings) Set(key, value string) {
 func (s *Settings) SetValues(key string, values []string) {
 	s.mu.Lock()
 	s.doc.SetValues(values, key)
+	s.dirty = true
 	s.mu.Unlock()
 	s.scheduleSave()
 }
@@ -282,16 +349,22 @@ func (s *Settings) scheduleSave() {
 // Save writes the file now, cancelling a scheduled write. It is a no-op while
 // the file could not be read, so Settings never replaces whatever is in it.
 func (s *Settings) Save() error {
+	s.cancelScheduledSave()
+	return s.save()
+}
+
+func (s *Settings) cancelScheduledSave() {
 	s.saveMu.Lock()
 	if s.saveTimer != nil {
 		s.saveTimer.Stop()
 		s.saveTimer = nil
 	}
 	s.saveMu.Unlock()
-	return s.save()
 }
 
 func (s *Settings) save() error {
+	s.ioMu.Lock()
+	defer s.ioMu.Unlock()
 	s.mu.Lock()
 	if s.read != nil {
 		err := s.read
@@ -305,13 +378,32 @@ func (s *Settings) save() error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
 		return err
 	}
-	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(text), 0o644); err != nil {
+	// A unique temporary name keeps two Code instances from writing the same
+	// file, and 0600 keeps the paths in the config private.
+	tmp, err := os.CreateTemp(filepath.Dir(s.path), ".code-config-*")
+	if err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, s.path); err != nil {
+	defer os.Remove(tmp.Name())
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
 		return err
 	}
+	if _, err := tmp.WriteString(text); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp.Name(), s.path); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	s.disk = text
+	s.dirty = false
+	s.mu.Unlock()
 	if onSave != nil {
 		onSave()
 	}
@@ -329,7 +421,7 @@ func CreateIfMissing(paths Paths) error {
 	if err := os.MkdirAll(filepath.Dir(paths.Config), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(paths.Config, []byte(text), 0o644)
+	return os.WriteFile(paths.Config, []byte(text), 0o600)
 }
 
 // importedFromGhostty reads Ghostty's config files and returns their settings,

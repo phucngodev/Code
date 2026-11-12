@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -17,11 +18,13 @@ import (
 
 	"github.com/phucngodev/code/internal/agent"
 	"github.com/phucngodev/code/internal/config"
+	"github.com/phucngodev/code/internal/history"
 	"github.com/phucngodev/code/internal/model"
 )
 
 // App is the whole application: its settings, its agent socket, and its
-// windows.
+// windows. Except for the fields guarded by mu, shellMu and saveMu, every
+// field is read and written on the main thread only.
 type App struct {
 	paths      config.Paths
 	settings   *config.Settings
@@ -36,7 +39,17 @@ type App struct {
 
 	mu            sync.Mutex
 	surfaceOwners map[string]*WindowState
+	saveMu        sync.Mutex
 	saveTimer     *time.Timer
+	// workAreas are the displays' usable areas, read once when the toolkit is
+	// ready, so a restored window frame can be checked before it is used.
+	workAreas []mygo.Rectangle
+	// historyMu guards the agent session scan shared by every window, so
+	// opening a second window does not walk the transcripts again.
+	historyMu       sync.Mutex
+	historySessions []history.Session
+	historyLoading  bool
+	historyLoaded   bool
 	// writer saves the session off the main thread. dirStop ends the directory
 	// watcher.
 	writer  *sessionWriter
@@ -72,10 +85,6 @@ type App struct {
 	shellQueue    []*Surface
 	shellKnown    map[int]bool
 	shellWatching bool
-	// configMod is the config file's last seen modification time, so the
-	// watcher reloads it when it changes on disk.
-	configMod time.Time
-
 	// chromeLight and chromeDark are the widget themes derived from the
 	// terminals' light and dark themes, so the chrome matches the terminal.
 	// terminalCfg is the parsed settings the views read instead of re-reading
@@ -140,6 +149,9 @@ func (a *App) ready() {
 	a.menu = a.buildMenu()
 	mygo.App.SetMenu(a.menu)
 	mygo.App.OnWillQuit(func(*mygo.QuitEvent) { a.shutdown() })
+	for _, display := range mygo.Screen.Displays() {
+		a.workAreas = append(a.workAreas, display.WorkArea)
+	}
 	a.startDirWatcher()
 	a.restoreWindows()
 	mygo.App.OnActivate(func(visible bool) {
@@ -147,6 +159,21 @@ func (a *App) ready() {
 			a.newWindow(nil)
 		}
 	})
+}
+
+// BringToFront shows a window of this instance, opening one when there is
+// none. A second launch of Code forwards to the running instance, which then
+// raises a window rather than starting another process that shares the config
+// and session files.
+func (a *App) BringToFront() {
+	if len(a.windows) == 0 {
+		a.newWindow(nil)
+		return
+	}
+	if w := a.windows[len(a.windows)-1]; w != nil && w.win != nil {
+		w.win.Show()
+		w.win.Focus()
+	}
 }
 
 // restoreWindows rebuilds the saved windows, or opens one when none is saved.
@@ -192,7 +219,8 @@ func (a *App) newWindow(frame *model.WindowSession) *WindowState {
 	}
 	if frame != nil && frame.Frame != nil {
 		f := frame.Frame
-		if f.X != 0 || f.Y != 0 {
+		// A frame saved on a display that is gone must not reopen off screen.
+		if frameOnScreen(f, a.workAreas) || len(a.workAreas) == 0 {
 			opts.X, opts.Y = f.X, f.Y
 		}
 		if f.Width > 0 {
@@ -237,6 +265,13 @@ func (a *App) newWindow(frame *model.WindowSession) *WindowState {
 		store.Restore(*frame, newID, func(id, dir, workspace string) *Surface {
 			return w.newSurface(id, dir, workspace)
 		})
+		// A terminal opened to resume an agent keeps that command after a
+		// relaunch, so its pane runs the agent again rather than a plain shell.
+		for id, command := range layoutCommands(frame) {
+			if s := w.surfaceByID(id); s != nil {
+				s.command = safeResumeCommand(command)
+			}
+		}
 	}
 	if len(store.Workspaces) == 0 {
 		w.newWorkspace("")
@@ -337,18 +372,61 @@ func (a *App) applyConfig() {
 
 // agentEnv is the variables a shell inherits so the agent hooks can find Code.
 func (a *App) agentEnv(s *Surface) []string {
-	shimDir := agent.ShimsDir(a.shimsRoot, s.id)
-	_ = agent.InstallShims(shimDir, a.cdePath, agent.Adapters())
-	path := shimDir + string(os.PathListSeparator) + os.Getenv("PATH")
-	return []string{
+	env := []string{
 		agent.EnvSurfaceID + "=" + s.id,
 		agent.EnvWorkspaceID + "=" + s.workspaceID,
 		agent.EnvSocket + "=" + a.socketPath,
 		agent.EnvCde + "=" + a.cdePath,
 		agent.EnvShims + "=" + a.shimsRoot,
 		agent.EnvAgentsDir + "=" + a.assetsDir,
-		"PATH=" + path,
 	}
+	// Without a helper binary and a root, installing shims would land in the
+	// working directory. Leaving PATH alone is safer than pointing at a shim
+	// directory that does not exist.
+	if a.shimsRoot != "" && a.cdePath != "" {
+		shimDir := agent.ShimsDir(a.shimsRoot, s.id)
+		if err := agent.InstallShims(shimDir, a.cdePath, agent.Adapters()); err != nil {
+			log.Printf("codeterm: could not install agent shims: %v", err)
+		} else {
+			env = append(env, "PATH="+shimDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+		}
+	}
+	return append(env, shellIntegrationEnv(a.assetsDir, a.terminalCfg)...)
+}
+
+// shellIntegrationEnv points a shell at Code's startup files, which put the
+// agent shims back in front of PATH after the user's profile has set it.
+// bash needs a line in the user's own startup file; see the bash script.
+func shellIntegrationEnv(assetsDir string, cfg config.TerminalConfig) []string {
+	if assetsDir == "" || cfg.Command != "" {
+		return nil
+	}
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		if runtime.GOOS == "darwin" {
+			shell = "/bin/zsh"
+		} else {
+			shell = "/bin/sh"
+		}
+	}
+	root := filepath.Join(assetsDir, "shell-integration")
+	switch filepath.Base(shell) {
+	case "zsh":
+		// MyGo's zsh integration restores ZDOTDIR and sources the .zshenv in
+		// it, so Code's script chains to the user's own startup files.
+		var out []string
+		if original := os.Getenv("ZDOTDIR"); original != "" {
+			out = append(out, "CODE_ZSH_ZDOTDIR="+original)
+		}
+		return append(out, "ZDOTDIR="+filepath.Join(root, "zsh"))
+	case "fish":
+		dirs := os.Getenv("XDG_DATA_DIRS")
+		if dirs == "" {
+			dirs = "/usr/local/share:/usr/share"
+		}
+		return []string{"XDG_DATA_DIRS=" + root + string(os.PathListSeparator) + dirs}
+	}
+	return nil
 }
 
 // setUpAgents prepares cde, the shim root and the agent resources, and installs
@@ -358,6 +436,9 @@ func (a *App) setUpAgents() {
 	// looking at it through the window that owns it.
 	a.wireAgentStore()
 	a.cdePath, _ = os.Executable()
+	if a.cdePath == "" {
+		log.Printf("codeterm: could not find the app binary; agent hooks are disabled")
+	}
 	a.shimsRoot = agent.ShimsRoot(os.Getpid())
 	cacheDir, err := os.UserCacheDir()
 	if err != nil {
@@ -404,9 +485,33 @@ func (a *App) deliverAgentEvent(event agent.Event) {
 	if owner == nil {
 		return
 	}
-	owner.win.Update(func() {
+	owner.update(func() {
+		// Hooks carry the workspace they ran in; an event claiming a different
+		// one is misrouted and must not change this terminal's status.
+		if event.WorkspaceID != "" {
+			if id, ok := a.workspaceIDFor(event.SurfaceID); ok && id != event.WorkspaceID {
+				return
+			}
+		}
 		a.agents.Apply(event)
+		// The hook's directory is the terminal's own, a fallback for one whose
+		// shell has not reported a directory yet.
+		if event.Cwd != "" {
+			if s := owner.surfaceByID(event.SurfaceID); s != nil && s.dir == "" {
+				s.dir = event.Cwd
+			}
+		}
 	})
+}
+
+// workspaceIDFor reads a terminal's workspace on the main thread.
+func (a *App) workspaceIDFor(surface string) (string, bool) {
+	for _, w := range a.windows {
+		if s := w.surfaceByID(surface); s != nil {
+			return s.workspaceID, true
+		}
+	}
+	return "", false
 }
 
 func (a *App) ownerOf(surface string) *WindowState {
@@ -427,18 +532,23 @@ func (a *App) removeLive(surface string) {
 	a.mu.Unlock()
 	a.agents.Remove(surface)
 	a.closeNotification(surface)
+	a.closeNotification("terminal:" + surface)
 }
 
 // ScheduleSave coalesces session writes, which arrive in bursts as shells
 // report new directories. The delay runs from the first unsaved change, so a
 // steady stream cannot put the save off indefinitely.
 func (a *App) ScheduleSave() {
+	a.saveMu.Lock()
+	defer a.saveMu.Unlock()
 	if a.saveTimer != nil {
 		return
 	}
 	a.saveTimer = time.AfterFunc(time.Second, func() {
 		mygo.RunOnMain(func() {
+			a.saveMu.Lock()
 			a.saveTimer = nil
+			a.saveMu.Unlock()
 			a.saveSession()
 		})
 	})
@@ -446,10 +556,12 @@ func (a *App) ScheduleSave() {
 
 // flushSession writes any unsaved session now, for quitting.
 func (a *App) flushSession() {
+	a.saveMu.Lock()
 	if a.saveTimer != nil {
 		a.saveTimer.Stop()
 		a.saveTimer = nil
 	}
+	a.saveMu.Unlock()
 	a.writer.flush(a.snapshot())
 }
 
@@ -459,8 +571,24 @@ func (a *App) shutdown() {
 		close(a.dirStop)
 		a.dirStop = nil
 	}
+	if a.listener != nil {
+		a.listener.Stop()
+	}
+	for id, notification := range a.notifications {
+		notification.Close()
+		delete(a.notifications, id)
+	}
+	if a.shimsRoot != "" {
+		if err := os.RemoveAll(a.shimsRoot); err != nil {
+			log.Printf("codeterm: could not remove the shim directory: %v", err)
+		}
+	}
 	a.flushSession()
-	_ = a.settings.Save()
+	// An unchanged config must not be rewritten on quit: doing so can clobber
+	// an edit made outside Code just before it quit.
+	if a.settings.Dirty() {
+		_ = a.settings.Save()
+	}
 }
 
 // snapshot reads the windows into a session, on the main thread.
@@ -477,9 +605,28 @@ func (a *App) snapshot() *model.Session {
 		return session
 	}
 	for _, w := range a.windows {
-		session.Windows = append(session.Windows, w.store.Snapshot(w.frame()))
+		saved := w.store.Snapshot(w.frame())
+		fillLayoutCommands(&saved, w.allSurfaces())
+		session.Windows = append(session.Windows, saved)
 	}
 	return session
+}
+
+// frameOnScreen reports whether a saved frame still overlaps a display.
+func frameOnScreen(f *model.Frame, areas []mygo.Rectangle) bool {
+	if f == nil {
+		return false
+	}
+	for _, area := range areas {
+		if area.Width <= 0 || area.Height <= 0 {
+			continue
+		}
+		if f.X < int(area.X+area.Width) && f.X+max(f.Width, 1) > int(area.X) &&
+			f.Y < int(area.Y+area.Height) && f.Y+max(f.Height, 1) > int(area.Y) {
+			return true
+		}
+	}
+	return false
 }
 
 // startDirWatcher follows the working directory shells report with OSC 7 and
@@ -506,19 +653,11 @@ func (a *App) startDirWatcher() {
 
 // reloadConfigIfChanged reloads the config when its file changed on disk, so
 // an edit made by hand applies without the Reload Configuration command.
+// Settings knows which writes were its own and which edits are still pending,
+// so a debounced save is never read back over an unsaved change.
 func (a *App) reloadConfigIfChanged() {
-	info, err := os.Stat(a.paths.Config)
-	if err != nil {
-		return
-	}
-	mod := info.ModTime()
-	if a.configMod.IsZero() {
-		a.configMod = mod
-		return
-	}
-	if mod.After(a.configMod) {
-		a.configMod = mod
-		a.ReloadConfig()
+	if a.settings.ReloadIfChanged() {
+		a.applyConfig()
 	}
 }
 
@@ -541,9 +680,14 @@ func (a *App) refreshDirs() {
 				if d, ok := processDir(pid); ok {
 					dir = d
 				}
-				if host := sshRemote(pid); host != s.remote {
-					s.remote = host
-					changed = true
+				// Reading a process's arguments is costly; only do it when
+				// the foreground process actually changed.
+				if fg := foregroundPID(pid); fg != s.foreground {
+					s.foreground = fg
+					if host := sshRemoteFor(fg); host != s.remote {
+						s.remote = host
+						changed = true
+					}
 				}
 			}
 			if dir != "" && dir != s.dir {

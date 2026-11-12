@@ -7,8 +7,6 @@ import (
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 
-	"github.com/phucngodev/code/internal/agent"
-	"github.com/phucngodev/code/internal/config"
 	"github.com/phucngodev/code/internal/model"
 )
 
@@ -19,18 +17,17 @@ func liveWindow(t *testing.T, binds []string) *WindowState {
 	if err := terminal.Load(); err != nil {
 		t.Skipf("libghostty not available: %v", err)
 	}
-	path := t.TempDir() + "/config"
+	a := testApp(t)
 	text := "command = /usr/bin/true\nmacos-option-as-alt = true\n"
 	for _, b := range binds {
 		text += "keybind = " + b + "\n"
 	}
-	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+	if err := os.WriteFile(a.settings.Path(), []byte(text), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	settings := config.LoadSettings(path)
-	a := &App{settings: settings, agents: agent.NewStore()}
+	a.settings.Reload()
 	a.reloadKeybinds()
-	a.terminalCfg = settings.Terminal("")
+	a.terminalCfg = a.settings.Terminal("")
 	w := &WindowState{app: a, store: model.NewStore[*Surface](), sidebarHidden: true}
 	w.newWorkspace("")
 	w.splitFocused(model.DirRight)
@@ -105,11 +102,7 @@ func TestLiveResizeKeybind(t *testing.T) {
 }
 
 func TestNoteFocusedMovesTabFocus(t *testing.T) {
-	a := &App{
-		settings: config.LoadSettings(t.TempDir() + "/config"),
-		agents:   agent.NewStore(),
-		writer:   newSessionWriter(t.TempDir() + "/session.json"),
-	}
+	a := testApp(t)
 	w := &WindowState{app: a, store: model.NewStore[*Surface](), sidebarHidden: true}
 	w.newWorkspace("")
 	w.splitFocused(model.DirRight)

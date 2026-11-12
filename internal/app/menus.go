@@ -51,8 +51,8 @@ func (a *App) buildMenu() *mygo.Menu {
 	appMenu := []*mygo.MenuItem{
 		{Role: mygo.RoleAbout},
 		mygo.Separator(),
-		{Label: "Settings…", Accelerator: "CmdOrCtrl+,", Click: func(*mygo.MenuItem, *mygo.Window) { a.ShowSettings() }},
-		{Label: "Reload Configuration", Accelerator: "Shift+CmdOrCtrl+,", Click: func(*mygo.MenuItem, *mygo.Window) { a.ReloadConfig() }},
+		{Label: "Settings…", Accelerator: acc.settings, Click: func(*mygo.MenuItem, *mygo.Window) { a.ShowSettings() }},
+		{Label: "Reload Configuration", Accelerator: acc.reloadConfig, Click: func(*mygo.MenuItem, *mygo.Window) { a.ReloadConfig() }},
 		mygo.Separator(),
 		{Role: mygo.RoleHide},
 		{Role: mygo.RoleHideOthers},
@@ -62,54 +62,54 @@ func (a *App) buildMenu() *mygo.Menu {
 	}
 
 	fileMenu := []*mygo.MenuItem{
-		{Label: "New Window", Accelerator: "Shift+CmdOrCtrl+N", Click: func(*mygo.MenuItem, *mygo.Window) { a.newWindow(nil) }},
+		{Label: "New Window", Accelerator: acc.newWindow, Click: func(*mygo.MenuItem, *mygo.Window) { a.newWindow(nil) }},
 		item("New Workspace", "", func(w *WindowState) { w.newWorkspace("") }),
-		item("New Tab", "CmdOrCtrl+T", func(w *WindowState) { w.newTab("") }),
+		item("New Tab", acc.newTab, func(w *WindowState) { w.newTab("") }),
 		mygo.Separator(),
-		item("Close Pane", "CmdOrCtrl+W", func(w *WindowState) {
+		item("Close Pane", acc.closePane, func(w *WindowState) {
 			if s := w.focusedSurface(); s != nil {
 				w.closeSurface(s)
 			}
 		}),
-		item("Close Tab", "Alt+CmdOrCtrl+W", func(w *WindowState) {
+		item("Close Tab", acc.closeTab, func(w *WindowState) {
 			if ws := w.store.Selected(); ws != nil {
 				if tab := ws.SelectedTab(); tab != nil {
 					w.closeTab(tab)
 				}
 			}
 		}),
-		{Label: "Close Window", Accelerator: "Shift+CmdOrCtrl+W", Click: func(_ *mygo.MenuItem, win *mygo.Window) {
+		{Label: "Close Window", Accelerator: acc.closeWindow, Click: func(_ *mygo.MenuItem, win *mygo.Window) {
 			if win != nil {
 				win.Close()
 			}
 		}},
 		mygo.Separator(),
-		item("Split Right", "CmdOrCtrl+D", func(w *WindowState) { w.splitFocused(model.DirRight) }),
-		item("Split Down", "Shift+CmdOrCtrl+D", func(w *WindowState) { w.splitFocused(model.DirDown) }),
+		item("Split Right", acc.splitRight, func(w *WindowState) { w.splitFocused(model.DirRight) }),
+		item("Split Down", acc.splitDown, func(w *WindowState) { w.splitFocused(model.DirDown) }),
 	}
 
 	editMenu := []*mygo.MenuItem{
-		{Role: mygo.RoleCopy, Accelerator: appKey("C")},
-		{Role: mygo.RolePaste, Accelerator: appKey("V")},
-		{Role: mygo.RoleSelectAll, Accelerator: appKey("A")},
+		{Role: mygo.RoleCopy, Accelerator: acc.copy},
+		{Role: mygo.RolePaste, Accelerator: acc.paste},
+		{Role: mygo.RoleSelectAll, Accelerator: acc.selectAll},
 		mygo.Separator(),
-		item("Find…", appKey("F"), func(w *WindowState) { w.openFind() }),
-		item("Find Next", "CmdOrCtrl+G", func(w *WindowState) { w.searchNext() }),
-		item("Find Previous", "Shift+CmdOrCtrl+G", func(w *WindowState) { w.searchPrevious() }),
+		item("Find…", acc.find, func(w *WindowState) { w.openFind() }),
+		item("Find Next", acc.findNext, func(w *WindowState) { w.searchNext() }),
+		item("Find Previous", acc.findPrevious, func(w *WindowState) { w.searchPrevious() }),
 	}
 
 	viewMenu := []*mygo.MenuItem{
-		item("Toggle Sidebar", "CmdOrCtrl+B", func(w *WindowState) { w.toggleSidebar() }),
-		item("Go to…", appKey("P"), func(w *WindowState) { w.openPalette() }),
-		item("Zoom Pane", "Shift+CmdOrCtrl+Enter", func(w *WindowState) { w.toggleZoom() }),
+		item("Toggle Sidebar", acc.toggleSidebar, func(w *WindowState) { w.toggleSidebar() }),
+		item("Go to…", acc.goTo, func(w *WindowState) { w.openPalette() }),
+		item("Zoom Pane", acc.zoomPane, func(w *WindowState) { w.toggleZoom() }),
 		mygo.Separator(),
 		windowItem("Enter Full Screen", "", func(win *mygo.Window) { win.SetFullScreen(!win.IsFullScreen()) }),
 	}
 
 	workspaceMenu := []*mygo.MenuItem{
-		item("Previous Workspace", "Shift+CmdOrCtrl+[", func(w *WindowState) { w.cycleWorkspace(-1) }),
-		item("Next Workspace", "Shift+CmdOrCtrl+]", func(w *WindowState) { w.cycleWorkspace(1) }),
-		item("Rename Workspace", "Shift+CmdOrCtrl+R", func(w *WindowState) {
+		item("Previous Workspace", acc.prevWorkspace, func(w *WindowState) { w.cycleWorkspace(-1) }),
+		item("Next Workspace", acc.nextWorkspace, func(w *WindowState) { w.cycleWorkspace(1) }),
+		item("Rename Workspace", acc.renameWorkspace, func(w *WindowState) {
 			if ws := w.store.Selected(); ws != nil {
 				w.beginRename(ws)
 			}
@@ -118,7 +118,7 @@ func (a *App) buildMenu() *mygo.Menu {
 	}
 	for i := 1; i <= 9; i++ {
 		i := i
-		accelerator := fmt.Sprintf("Alt+%d", i)
+		accelerator := workspaceAccelerator(i)
 		label := fmt.Sprintf("Switch to Workspace %d", i)
 		if i == 9 {
 			label = "Last Workspace"
@@ -138,7 +138,7 @@ func (a *App) buildMenu() *mygo.Menu {
 		if i == 9 {
 			label = "Last Tab"
 		}
-		workspaceMenu = append(workspaceMenu, item(label, fmt.Sprintf("CmdOrCtrl+%d", i), func(w *WindowState) {
+		workspaceMenu = append(workspaceMenu, item(label, tabAccelerator(i), func(w *WindowState) {
 			if i == 9 {
 				if ws := w.store.Selected(); ws != nil {
 					w.selectTabIndex(len(ws.Tabs) - 1)
@@ -185,17 +185,17 @@ func (a *App) windowMenuItems() []*mygo.MenuItem {
 		}
 	}
 	return []*mygo.MenuItem{
-		{Role: mygo.RoleMinimize, Accelerator: "CmdOrCtrl+M"},
+		{Role: mygo.RoleMinimize, Accelerator: acc.minimize},
 		{Role: mygo.RoleZoom},
 		mygo.Separator(),
-		windowItem("Fill", "Ctrl+Shift+F", func(win *mygo.Window) { a.manageWindow(win, func() { fillWindow(win) }) }),
-		windowItem("Center", "Ctrl+Shift+X", func(win *mygo.Window) { a.manageWindow(win, func() { centerWindow(win) }) }),
-		windowItem("Return to Previous Size", "Ctrl+Shift+R", func(win *mygo.Window) { a.restorePreviousSize(win) }),
+		windowItem("Fill", acc.fill, func(win *mygo.Window) { a.manageWindow(win, func() { fillWindow(win) }) }),
+		windowItem("Center", acc.center, func(win *mygo.Window) { a.manageWindow(win, func() { centerWindow(win) }) }),
+		windowItem("Return to Previous Size", acc.previousSize, func(win *mygo.Window) { a.restorePreviousSize(win) }),
 		mygo.Separator(),
-		windowItem("Tile Left Half", "Ctrl+Shift+Left", func(win *mygo.Window) { a.manageWindow(win, func() { tileWindow(win, tileLeft) }) }),
-		windowItem("Tile Right Half", "Ctrl+Shift+Right", func(win *mygo.Window) { a.manageWindow(win, func() { tileWindow(win, tileRight) }) }),
-		windowItem("Tile Top Half", "Ctrl+Shift+Up", func(win *mygo.Window) { a.manageWindow(win, func() { tileWindow(win, tileTop) }) }),
-		windowItem("Tile Bottom Half", "Ctrl+Shift+Down", func(win *mygo.Window) { a.manageWindow(win, func() { tileWindow(win, tileBottom) }) }),
+		windowItem("Tile Left Half", acc.tileLeft, func(win *mygo.Window) { a.manageWindow(win, func() { tileWindow(win, tileLeft) }) }),
+		windowItem("Tile Right Half", acc.tileRight, func(win *mygo.Window) { a.manageWindow(win, func() { tileWindow(win, tileRight) }) }),
+		windowItem("Tile Top Half", acc.tileTop, func(win *mygo.Window) { a.manageWindow(win, func() { tileWindow(win, tileTop) }) }),
+		windowItem("Tile Bottom Half", acc.tileBottom, func(win *mygo.Window) { a.manageWindow(win, func() { tileWindow(win, tileBottom) }) }),
 		mygo.Separator(),
 		{Role: mygo.RoleFront},
 	}

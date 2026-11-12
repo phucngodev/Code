@@ -107,14 +107,12 @@ func processDir(pid int) (string, bool) {
 	if int32(n) != vnodePathInfoSize {
 		return "", false
 	}
-	path := buf[vnodePathOffset:]
-	if end := bytes.IndexByte(path, 0); end >= 0 {
-		path = path[:end]
-	}
-	if len(path) == 0 {
+	field := buf[vnodePathOffset:]
+	end := bytes.IndexByte(field, 0)
+	if end <= 0 {
 		return "", false
 	}
-	return string(path), true
+	return validProcessDir(string(field[:end]))
 }
 
 // foregroundPID returns the PID of the process group the terminal whose shell
@@ -154,6 +152,9 @@ func parseProcArgs(buf []byte) []string {
 		return nil
 	}
 	argc := int(int32(binary.LittleEndian.Uint32(buf[:4])))
+	if argc <= 0 || argc > len(buf) {
+		return nil
+	}
 	p := 4
 	for p < len(buf) && buf[p] != 0 {
 		p++

@@ -87,7 +87,6 @@ type historyState struct {
 	expanded bool
 	query    string
 	sessions []history.Session
-	loading  bool
 	loaded   bool
 	// list builds only the session rows in view.
 	list ui.ListState
@@ -523,6 +522,9 @@ func (w *WindowState) buildFindBar(c *ui.Context) {
 				w.closeFind()
 			}
 		})
+		if panel.PressedOutside() || panel.OverlayShortcut(0, ui.KeyEscape) {
+			w.closeFind()
+		}
 	})
 }
 
@@ -530,7 +532,9 @@ func (w *WindowState) buildFindBar(c *ui.Context) {
 
 func (w *WindowState) onStoreChange() {
 	w.markChanged()
-	if w.win != nil {
+	// A pane exiting while its window closes still notifies the store; the
+	// native window is gone by then and must not be touched.
+	if w.win != nil && !w.closed {
 		w.win.SetTitle(w.title())
 	}
 	w.app.ScheduleSave()
@@ -679,11 +683,14 @@ func (w *WindowState) noteFocused(s *Surface) {
 }
 
 // routeNotification folds an agent's terminal notification into an event when
-// its adapter recognizes it, as Codex's approvals are.
-func (w *WindowState) routeNotification(s *Surface, body string) {
+// its adapter recognizes it, as Codex's approvals are. Any other OSC
+// notification is shown as the terminal's own, as a terminal app does.
+func (w *WindowState) routeNotification(s *Surface, title, body string) {
 	if event, ok := w.app.agents.Route(s.id, body, time.Now()); ok {
 		w.app.agents.Apply(event)
+		return
 	}
+	w.app.postTerminalNotification(w, s, title, body)
 }
 
 // reveal switches to a terminal and focuses it.
@@ -817,7 +824,11 @@ func (w *WindowState) confirmClose(surfaces []*Surface) bool {
 }
 
 // askClose holds a close for the user's answer, showing its alert next frame.
+// A second close while the alert is up must not discard the first one.
 func (w *WindowState) askClose(title, message string, close func()) {
+	if w.pending != nil {
+		return
+	}
 	w.pending = &pendingClose{title: title, message: message, close: close}
 	w.markChanged()
 }
@@ -902,6 +913,7 @@ func (w *WindowState) toggleSidebar() {
 		// shown again.
 		w.history.sessions = nil
 		w.history.loaded = false
+		w.app.resetHistory()
 		w.workspaceList = ui.ListState{}
 	}
 	w.focusSelected()
@@ -966,12 +978,14 @@ func (w *WindowState) searchPrevious() {
 
 func (w *WindowState) openFind() {
 	w.find.open = true
+	w.find.status = terminal.SearchStatus{}
 	w.searchCurrent()
 	w.markChanged()
 }
 
 func (w *WindowState) closeFind() {
 	w.find.open = false
+	w.find.status = terminal.SearchStatus{}
 	if s := w.focusedSurface(); s != nil && s.term != nil {
 		s.term.EndSearch()
 	}

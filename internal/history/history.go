@@ -3,8 +3,8 @@
 package history
 
 import (
+	"bufio"
 	"encoding/json"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -70,13 +70,21 @@ func DefaultRoots() []Root {
 	}
 }
 
-// Scan finds every transcript under the roots, newest first, capped at limit.
-// Unreadable files are skipped.
+// transcript is a JSONL file found under an agent's root.
+type transcript struct {
+	path  string
+	agent string
+	mod   time.Time
+}
+
+// Scan finds the newest transcripts under the roots, capped at limit. It stats
+// every file but reads only the ones it can keep: an agent may have thousands
+// of transcripts, and each used to cost a 256 KB read.
 func Scan(roots []Root, limit int) []Session {
 	if limit <= 0 {
 		limit = DefaultLimit
 	}
-	var sessions []Session
+	var files []transcript
 	for _, root := range roots {
 		filepath.WalkDir(root.Dir, func(path string, entry os.DirEntry, err error) error {
 			if err != nil {
@@ -91,15 +99,23 @@ func Scan(roots []Root, limit int) []Session {
 			if filepath.Ext(path) != ".jsonl" {
 				return nil
 			}
-			if session, ok := Read(path, root.Agent); ok {
-				sessions = append(sessions, session)
+			info, err := entry.Info()
+			if err != nil {
+				return nil
 			}
+			files = append(files, transcript{path: path, agent: root.Agent, mod: info.ModTime()})
 			return nil
 		})
 	}
-	sort.Slice(sessions, func(i, j int) bool { return sessions[i].Modified.After(sessions[j].Modified) })
-	if len(sessions) > limit {
-		sessions = sessions[:limit]
+	sort.Slice(files, func(i, j int) bool { return files[i].mod.After(files[j].mod) })
+	sessions := make([]Session, 0, limit)
+	for _, file := range files {
+		if len(sessions) >= limit {
+			break
+		}
+		if session, ok := Read(file.path, file.agent); ok {
+			sessions = append(sessions, session)
+		}
 	}
 	return sessions
 }
@@ -112,8 +128,25 @@ func Read(path, agent string) (Session, bool) {
 		return Session{}, false
 	}
 	defer file.Close()
-	data, _ := io.ReadAll(io.LimitReader(file, headBytes))
-	parsed := parse(data)
+	// Read lines only until the head holds what the sidebar needs, instead of
+	// pulling a fixed block from every transcript.
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 4096), headBytes)
+	var parsed parsedTranscript
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var object map[string]any
+		if err := json.Unmarshal([]byte(line), &object); err != nil {
+			continue
+		}
+		parseFields(object, &parsed)
+		if parsed.cwd != "" && parsed.title != "" {
+			break
+		}
+	}
 	if parsed.cwd == "" {
 		return Session{}, false
 	}
@@ -155,26 +188,28 @@ func parse(data []byte) parsedTranscript {
 		if err := json.Unmarshal([]byte(line), &object); err != nil {
 			continue
 		}
-		if parsed.id == "" {
-			if kind, _ := object["type"].(string); kind == "session" {
-				if value, _ := object["id"].(string); value != "" {
-					parsed.id = value
-				}
-			}
-		}
-		if parsed.cwd == "" {
-			if value, _ := object["cwd"].(string); value != "" {
-				parsed.cwd = value
-			}
-		}
-		if parsed.title == "" {
-			parsed.title = prompt(object)
-		}
-		if parsed.cwd != "" && parsed.title != "" {
-			break
-		}
+		parseFields(object, &parsed)
 	}
 	return parsed
+}
+
+// parseFields folds one transcript line into what the sidebar needs.
+func parseFields(object map[string]any, parsed *parsedTranscript) {
+	if parsed.id == "" {
+		if kind, _ := object["type"].(string); kind == "session" {
+			if value, _ := object["id"].(string); value != "" {
+				parsed.id = value
+			}
+		}
+	}
+	if parsed.cwd == "" {
+		if value, _ := object["cwd"].(string); value != "" {
+			parsed.cwd = value
+		}
+	}
+	if parsed.title == "" {
+		parsed.title = prompt(object)
+	}
 }
 
 // resume is the invocation that resumes a session in the agent's own CLI.

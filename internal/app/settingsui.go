@@ -1,8 +1,6 @@
 package app
 
 import (
-	"strings"
-
 	"github.com/egoist/mygo/ui"
 )
 
@@ -63,39 +61,5 @@ func settingsChoiceSelect(c *ui.Context, caption ui.Element, current string, cho
 				return
 			}
 		}
-	}
-}
-
-// parseThemeParts splits a `light:…,dark:…` theme option into its names.
-func parseThemeParts(value string) (light, dark string) {
-	for _, part := range strings.Split(value, ",") {
-		part = strings.TrimSpace(part)
-		switch {
-		case strings.HasPrefix(part, "light:"):
-			light = strings.TrimSpace(strings.TrimPrefix(part, "light:"))
-		case strings.HasPrefix(part, "dark:"):
-			dark = strings.TrimSpace(strings.TrimPrefix(part, "dark:"))
-		case part != "":
-			light, dark = part, part
-		}
-	}
-	return light, dark
-}
-
-// joinThemeParts renders a light and a dark name as a theme option.
-func joinThemeParts(light, dark string) string {
-	if light == "" && dark == "" {
-		return ""
-	}
-	if light == dark {
-		return light
-	}
-	switch {
-	case light == "":
-		return "dark:" + dark
-	case dark == "":
-		return "light:" + light
-	default:
-		return "light:" + light + ",dark:" + dark
 	}
 }

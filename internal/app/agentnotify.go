@@ -10,7 +10,7 @@ import (
 // handleAgentUpdate tells the user about an agent that needs them or finished,
 // with a desktop notification, unless they are already looking at it.
 func (a *App) handleAgentUpdate(update agent.Update) {
-	if !update.Alerts() {
+	if !update.Alerts() || update.RepeatsWait() {
 		return
 	}
 	w := a.ownerOf(update.Surface)
@@ -51,6 +51,40 @@ func (a *App) handleAgentUpdate(update agent.Update) {
 	notification.OnClick(func() {
 		w.update(func() {
 			if s := w.surfaceByID(update.Surface); s != nil {
+				w.reveal(s)
+			}
+		})
+	})
+	_ = notification.Show()
+}
+
+// postTerminalNotification shows an OSC notification a program asked for when
+// no agent adapter claimed it, so a plain shell's notifications are not lost.
+func (a *App) postTerminalNotification(w *WindowState, s *Surface, title, body string) {
+	if body == "" {
+		body = title
+	}
+	if body == "" {
+		return
+	}
+	if title == "" || title == body {
+		title = "Code"
+		if name := w.workspaceName(s.id); name != "" {
+			title = name
+		}
+	}
+	id := "terminal:" + s.id
+	notification := mygo.NewNotification(mygo.NotificationOptions{
+		ID: id, Title: title, Body: body, Group: "terminal", Silent: true,
+	})
+	if previous := a.notifications[id]; previous != nil {
+		previous.Close()
+	}
+	a.notifications[id] = notification
+	surface := s
+	notification.OnClick(func() {
+		w.update(func() {
+			if s := w.surfaceByID(surface.id); s != nil {
 				w.reveal(s)
 			}
 		})

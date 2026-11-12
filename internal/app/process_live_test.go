@@ -10,8 +10,6 @@ import (
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 
-	"github.com/phucngodev/code/internal/agent"
-	"github.com/phucngodev/code/internal/config"
 	"github.com/phucngodev/code/internal/model"
 )
 
@@ -34,20 +32,13 @@ func liveShellWindow(t *testing.T) (*WindowState, *Surface) {
 	if err := terminal.Load(); err != nil {
 		t.Skipf("libghostty not available: %v", err)
 	}
-	path := t.TempDir() + "/config"
-	if err := os.WriteFile(path, []byte("command = /bin/sh\n"), 0o644); err != nil {
+	a := testApp(t)
+	if err := os.WriteFile(a.settings.Path(), []byte("command = /bin/sh\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	settings := config.LoadSettings(path)
-	a := &App{
-		settings:  settings,
-		agents:    agent.NewStore(),
-		writer:    newSessionWriter(t.TempDir() + "/session.json"),
-		shimsRoot: t.TempDir(),
-		cdePath:   "/usr/bin/true",
-	}
+	a.settings.Reload()
 	a.reloadKeybinds()
-	a.terminalCfg = settings.Terminal("")
+	a.terminalCfg = a.settings.Terminal("")
 	w := &WindowState{app: a, store: model.NewStore[*Surface](), sidebarHidden: true}
 	w.newWorkspace("")
 	s := w.focusedSurface()

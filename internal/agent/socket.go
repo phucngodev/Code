@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -106,7 +107,7 @@ func (l *Listener) Path() string { return l.path }
 
 // Start binds the socket and begins accepting.
 func (l *Listener) Start() error {
-	if err := os.MkdirAll(filepath.Dir(l.path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(l.path), 0o700); err != nil {
 		return err
 	}
 	os.Remove(l.path)
@@ -114,8 +115,13 @@ func (l *Listener) Start() error {
 	if err != nil {
 		return err
 	}
-	// Only the user may connect, as the events name their terminals.
-	os.Chmod(l.path, 0o600)
+	// Only the user may connect, as the events name their terminals. A socket
+	// the OS will not protect must not be left listening.
+	if err := os.Chmod(l.path, 0o600); err != nil {
+		ln.Close()
+		os.Remove(l.path)
+		return err
+	}
 	l.mu.Lock()
 	l.listener = ln
 	l.mu.Unlock()
@@ -187,5 +193,10 @@ func (l *Listener) read(conn net.Conn) {
 		if l.Deliver != nil {
 			l.Deliver(event)
 		}
+	}
+	// A line longer than the limit is dropped by the scanner; say so once so
+	// a sender with an oversized payload is not silently ignored.
+	if err := scanner.Err(); err != nil {
+		log.Printf("code: agent event connection: %v", err)
 	}
 }

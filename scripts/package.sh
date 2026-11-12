@@ -48,6 +48,14 @@ for app in "${apps[@]}"; do
   [ -d "$app" ] || continue
   # The name MyGo's pinned library takes; Code's own has -local-<os>-<arch>.
   rm -f "$app/Contents/Resources/libghostty-vt.dylib"
+  if [ -e "$app/Contents/Resources/libghostty-vt.dylib" ]; then
+    echo "MyGo's libghostty-vt is still in $app" >&2
+    exit 1
+  fi
+  if ! compgen -G "$app/Contents/Resources/libghostty-vt-local-*" >/dev/null; then
+    echo "$app has no libghostty-vt-local-*; build it with ./scripts/build-libghostty.sh first" >&2
+    exit 1
+  fi
   codesign --force --deep -s - "$app"
   echo "stripped MyGo's library and signed $app"
 

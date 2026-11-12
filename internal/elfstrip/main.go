@@ -48,20 +48,37 @@ func strip(path string) error {
 	for _, segment := range file.Progs {
 		end = max(end, segment.Off+segment.Filesz)
 	}
+	if end < 0x40 || end > uint64(len(data)) {
+		return fmt.Errorf("no ELF header before the last program segment")
+	}
 	out := append([]byte(nil), data[:end]...)
 
 	le := binary.LittleEndian
 	shoff := le.Uint64(data[0x28:])
 	shentsize := uint64(le.Uint16(data[0x3a:]))
 	shnum := uint64(le.Uint16(data[0x3c:]))
+	// A zero count means the real one is in section header zero.
+	if shnum == 0 {
+		shnum = uint64(len(file.Sections))
+	}
+	if shoff == 0 || shentsize < 64 || shnum == 0 ||
+		shoff > uint64(len(data)) || shentsize*shnum > uint64(len(data))-shoff {
+		return fmt.Errorf("unsupported section header table")
+	}
 	headers := append([]byte(nil), data[shoff:shoff+shentsize*shnum]...)
 
 	for i, section := range file.Sections {
+		if uint64(i) >= shnum {
+			return fmt.Errorf("section %d is missing from the header table", i)
+		}
 		header := headers[uint64(i)*shentsize:]
 		// Keep allocated sections and anything already inside the segments.
 		if section.Type == elf.SHT_NULL || section.Type == elf.SHT_NOBITS ||
 			section.Flags&elf.SHF_ALLOC != 0 || section.Offset < end {
 			continue
+		}
+		if section.Offset+section.FileSize > uint64(len(data)) {
+			return fmt.Errorf("section %d lies outside the file", i)
 		}
 		size := section.FileSize
 		if strings.HasPrefix(section.Name, ".debug") || strings.HasPrefix(section.Name, ".zdebug") {

@@ -30,10 +30,18 @@ system's look.
 
 ## What is not ported yet
 
-These are deliberately out of this pass:
+These are deliberately out of this pass. Their Settings controls save a value,
+and Settings > Advanced lists the option as ignored, but Code does not act on it:
 
-- alert **sounds** (the Settings controls persist but are not played),
-- secure keyboard entry, About/Licenses windows, translucent sidebar material.
+- command-finish alerts (`notify-on-command-finish`, `-action`, `-after`),
+  because Code cannot yet tell when a command finishes,
+- named alert **sounds** (the name persists but no sound is played),
+- `mouse-hide-while-typing` and secure keyboard entry (`macos-auto-secure-input`),
+- About/Licenses windows, translucent sidebar material.
+
+Generic terminal notifications (OSC 9 and OSC 777) are shown, as are agent
+status alerts. Settings > Advanced lists every option Code reads but does not
+honour, so an imported Ghostty config can be checked there.
 
 ## Requirements
 
@@ -74,14 +82,17 @@ and records the ref in `resources/libghostty-vt-local.version`. `main.go` sets
 `go run .` and a packaged app use it. `MYGO_GHOSTTY_VT` set yourself still wins.
 
 Set `GHOSTTY_SRC` to build from a checkout you already have at the tag,
-instead of cloning one into a cache. The built libraries are git-ignored —
-run the script once after cloning, or Code falls back to MyGo's pinned
-revision. The revision to use is kept in `ghostty.version`.
+instead of cloning one into a cache. The built libraries are git-ignored, so
+run the script once after cloning. Code loads only its own library: it refuses
+to start on MyGo's pinned one, unless `CODE_ALLOW_MYGO_GHOSTTY=1` allows it
+for development. The revision to use is kept in `ghostty.version`.
 
 `mygo build` also bundles MyGo's own pinned `libghostty-vt`, which Code does
-not use. `scripts/package.sh` builds the app without a disk image, removes
-that copy, re-signs and makes the disk image, so a shipped app holds only the
-library Code uses:
+not use and must not ship. `scripts/package.sh` builds a macOS app, removes
+that copy, re-signs it and makes the disk image; `scripts/build-release.sh`
+does the same for Linux with `internal/packageclean`, which also removes the
+copy from the `.deb` and `.tar.gz`. A shipped app then holds only the library
+Code uses:
 
 ```sh
 scripts/build-libghostty.sh all
@@ -152,9 +163,24 @@ and the top-level guides for menus, windows and architecture.
 | Themes | `~/.config/code/themes` |
 | Session | `~/.config/code/session.json` |
 | Agent socket | `~/.config/code/agent.<pid>.sock` |
+| Agent resources | `~/Library/Caches/code/assets` (or `$XDG_CACHE_HOME/code/assets`) |
+| PATH shims | `~/Library/Caches/code/shims/<pid>/<terminal>` (or the XDG cache) |
+
+The config and session files are private to the user (`0600`). The socket and
+shim directories live in the user's own cache, not in a shared `/tmp` path.
 
 The config file uses Ghostty's syntax, so existing Ghostty themes and options
 carry over, and the first launch imports Ghostty's own config.
+
+Code's zsh and fish startup files put the agent shims back in front of `PATH`
+after your shell profile has set it: zsh reads them through `ZDOTDIR`, fish
+through `XDG_DATA_DIRS`. Bash only reads `BASH_ENV` for non-interactive shells,
+so to keep the shims in an interactive bash, add this to `~/.bashrc` or
+`~/.bash_profile`:
+
+```sh
+[ -n "$CODE_AGENTS_DIR" ] && source "$CODE_AGENTS_DIR/shell-integration/bash/code.bash"
+```
 
 ## Agent status
 
@@ -178,10 +204,14 @@ extensions call `cde event` directly. The app binary also acts as `cde`, so a
 single build serves both.
 
 ```sh
+go build -o cde ./cmd/cde    # the standalone helper, for use outside Code
 cde event working   --agent claude --detail "Read src/main.go"
 cde event needsInput --agent claude --detail "Approve this command?"
 cde ping
 ```
+
+Inside a Code terminal the app binary itself is `cde` (`CODE_CDE`), so the
+standalone build is only needed to run the helper from another terminal.
 
 The event kinds are `sessionStarted`, `turnStarted`, `working`, `needsInput`,
 `turnEnded`, `sessionEnded` and `attention`. Start an agent with

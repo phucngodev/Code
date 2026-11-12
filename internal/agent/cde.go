@@ -10,6 +10,9 @@ import (
 	"time"
 )
 
+// maximumHookPayload bounds the JSON an agent's hook may send on stdin.
+const maximumHookPayload = 1 << 20
+
 const usageText = `usage: cde event <kind> [--agent NAME] [--session ID] [--detail TEXT]
                         [--cwd PATH] [--surface UUID] [--workspace UUID]
        cde hook <agent>              (reads the agent's hook JSON on stdin)
@@ -90,7 +93,7 @@ func RunCde(args []string, environ []string, stdin io.Reader, stdout, stderr io.
 			debugf(stderr, environment, "no agent named "+args[1])
 			return 0
 		}
-		data, _ := io.ReadAll(stdin)
+		data, _ := io.ReadAll(io.LimitReader(stdin, maximumHookPayload))
 		payload, ok := ParseHookPayload(data, adapter.Name, environment, now)
 		if !ok {
 			debugf(stderr, environment, "hook input is not a JSON object")
@@ -151,6 +154,13 @@ func sendEvent(event Event, socket string, environment map[string]string, stderr
 	if err != nil {
 		return
 	}
+	if len(line) > maximumLineLength {
+		event.Detail = Summarize(event.Detail)
+		if line, err = event.Line(); err != nil || len(line) > maximumLineLength {
+			debugf(stderr, environment, "event is too long to send")
+			return
+		}
+	}
 	conn, err := net.DialTimeout("unix", path, 250*time.Millisecond)
 	if err != nil {
 		debugf(stderr, environment, "cannot connect to "+path)
@@ -210,6 +220,9 @@ func eventFromArgs(args []string, environment map[string]string, now time.Time) 
 		default:
 			return Event{}, fmt.Errorf("unknown option %s", flag)
 		}
+	}
+	if len(rest) != 0 {
+		return Event{}, fmt.Errorf("missing value for %s", rest[0])
 	}
 	if event.SurfaceID == "" {
 		event.SurfaceID = environment[EnvSurfaceID]

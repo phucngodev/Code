@@ -1,6 +1,9 @@
 package agent
 
-import "time"
+import (
+	"sync"
+	"time"
+)
 
 // State is what an agent session is doing.
 type State int
@@ -96,8 +99,11 @@ func IndicatorFor(s Session) (Indicator, bool) {
 }
 
 // Store tracks each terminal's agent, built from the events cde sends.
-// Indicator observers are notified only when the visible state changes.
+// Indicator observers are notified only when the visible state changes. All
+// state is guarded by mu; observers are called after it is released, since
+// they may read the store again.
 type Store struct {
+	mu       sync.RWMutex
 	sessions map[string]Session
 	// IsLive tells whether a terminal with that id is open; events for any
 	// other id are dropped.
@@ -122,18 +128,38 @@ func NewStore() *Store {
 	}
 }
 
-// Sessions returns the stored sessions by terminal id.
-func (s *Store) Sessions() map[string]Session { return s.sessions }
+// hooks copies the observer functions, which are set once before events
+// arrive, so they can be called after the state lock is released.
+func (s *Store) hooks() (isLive, isVisible func(string) bool, onChange func(string), onUpdate func(Update), onUnread func()) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.IsLive, s.IsVisible, s.OnChange, s.OnUpdate, s.OnUnreadChange
+}
+
+// Sessions returns a copy of the stored sessions by terminal id.
+func (s *Store) Sessions() map[string]Session {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make(map[string]Session, len(s.sessions))
+	for id, session := range s.sessions {
+		out[id] = session
+	}
+	return out
+}
 
 // Apply folds an event into the store.
 func (s *Store) Apply(event Event) {
 	if event.Kind == KindUnknown {
 		return
 	}
-	if event.SurfaceID == "" || !s.IsLive(event.SurfaceID) {
+	isLive, isVisible, onChange, onUpdate, onUnread := s.hooks()
+	if event.SurfaceID == "" || !isLive(event.SurfaceID) {
 		return
 	}
 	surface := event.SurfaceID
+	visible := isVisible(surface)
+
+	s.mu.Lock()
 	previous, had := s.sessions[surface]
 
 	// Resuming or compacting announces the running session again, and
@@ -143,6 +169,7 @@ func (s *Store) Apply(event Event) {
 	// Each hook reaches the socket in its own process, so a later hook can
 	// overtake an earlier one.
 	if had && event.Kind != KindSessionStarted && event.At.Before(previous.UpdatedAt) {
+		s.mu.Unlock()
 		return
 	}
 
@@ -170,14 +197,15 @@ func (s *Store) Apply(event Event) {
 		session.State = StateWaiting
 	case KindTurnEnded:
 		session.State = StateIdle
-		session.FinishedUnseen = !s.IsVisible(surface)
+		session.FinishedUnseen = !visible
 	case KindSessionEnded:
 		session.State = StateEnded
 	case KindAttention:
 		session.Attention = event.Detail
 	}
 
-	if !sameIndicator(had, previous, session) {
+	indicatorChanged := !sameIndicator(had, previous, session)
+	if indicatorChanged {
 		if _, ok := IndicatorFor(session); ok {
 			session.IndicatorSince = event.At
 		} else {
@@ -186,19 +214,25 @@ func (s *Store) Apply(event Event) {
 	}
 
 	s.sessions[surface] = session
-	if s.OnUpdate != nil {
-		var prev *Session
+	unreadChanged := (had && previous.IsUnread()) != session.IsUnread()
+	var update Update
+	if onUpdate != nil {
+		update = Update{Surface: surface, Kind: event.Kind, Session: session}
 		if had {
 			p := previous
-			prev = &p
+			update.Previous = &p
 		}
-		s.OnUpdate(Update{Surface: surface, Kind: event.Kind, Previous: prev, Session: session})
 	}
-	if (had && previous.IsUnread()) != session.IsUnread() && s.OnUnreadChange != nil {
-		s.OnUnreadChange()
+	s.mu.Unlock()
+
+	if onUpdate != nil {
+		onUpdate(update)
 	}
-	if !sameIndicator(had, previous, session) && s.OnChange != nil {
-		s.OnChange(surface)
+	if unreadChanged && onUnread != nil {
+		onUnread()
+	}
+	if indicatorChanged && onChange != nil {
+		onChange(surface)
 	}
 }
 
@@ -216,7 +250,9 @@ func sameIndicator(had bool, previous, current Session) bool {
 // false when the agent does not turn it into an event, in which case the app
 // posts it as the terminal's own.
 func (s *Store) Route(surface, message string, at time.Time) (Event, bool) {
+	s.mu.RLock()
 	session, ok := s.sessions[surface]
+	s.mu.RUnlock()
 	if !ok || session.State == StateEnded {
 		return Event{}, false
 	}
@@ -241,8 +277,10 @@ func (s *Store) Route(surface, message string, at time.Time) (Event, bool) {
 
 // MarkSeen clears a terminal's unread alerts.
 func (s *Store) MarkSeen(surface string) {
+	s.mu.Lock()
 	session, ok := s.sessions[surface]
 	if !ok || !session.IsUnread() {
+		s.mu.Unlock()
 		return
 	}
 	previousIndicator, previousOK := IndicatorFor(session)
@@ -253,18 +291,23 @@ func (s *Store) MarkSeen(surface string) {
 	}
 	s.sessions[surface] = session
 	currentIndicator, currentOK := IndicatorFor(session)
+	onChange, onUnread := s.OnChange, s.OnUnreadChange
+	s.mu.Unlock()
+
 	if previousOK != currentOK || previousIndicator != currentIndicator {
-		if s.OnChange != nil {
-			s.OnChange(surface)
+		if onChange != nil {
+			onChange(surface)
 		}
 	}
-	if s.OnUnreadChange != nil {
-		s.OnUnreadChange()
+	if onUnread != nil {
+		onUnread()
 	}
 }
 
 // UnreadCount counts terminals that finished or asked for attention unseen.
 func (s *Store) UnreadCount(surfaces []string) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	count := 0
 	for _, surface := range surfaces {
 		if session, ok := s.sessions[surface]; ok && session.IsUnread() {
@@ -276,6 +319,8 @@ func (s *Store) UnreadCount(surfaces []string) int {
 
 // PendingCount counts terminals whose agent is waiting or finished unseen.
 func (s *Store) PendingCount(surfaces []string) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	count := 0
 	for _, surface := range surfaces {
 		session, ok := s.sessions[surface]
@@ -291,6 +336,8 @@ func (s *Store) PendingCount(surfaces []string) int {
 
 // IndicatorForSurfaces returns the most urgent mark among the terminals.
 func (s *Store) IndicatorForSurfaces(surfaces []string) (Indicator, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	var best Indicator
 	found := false
 	for _, surface := range surfaces {
@@ -312,6 +359,8 @@ func (s *Store) IndicatorForSurfaces(surfaces []string) (Indicator, bool) {
 // StatusForSurfaces returns the most urgent status among the terminals,
 // dated from when it was taken.
 func (s *Store) StatusForSurfaces(surfaces []string) (Status, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	var best Status
 	found := false
 	for _, surface := range surfaces {
@@ -336,6 +385,8 @@ func (s *Store) StatusForSurfaces(surfaces []string) (Status, bool) {
 
 // RunningAgent returns the agent's name in a terminal, until its session ends.
 func (s *Store) RunningAgent(surface string) string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	session, ok := s.sessions[surface]
 	if !ok || session.State == StateEnded || session.Agent == "" {
 		return ""
@@ -346,6 +397,8 @@ func (s *Store) RunningAgent(surface string) string {
 // MostPending returns the surface among these that most needs the user: one
 // waiting for input first, then the most recently finished or attention.
 func (s *Store) MostPending(surfaces []string) (string, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	best, found := "", false
 	var bestIndicator Indicator
 	var bestSince time.Time
@@ -374,10 +427,13 @@ func (s *Store) MostPending(surfaces []string) (string, bool) {
 
 // Remove drops a terminal's session.
 func (s *Store) Remove(surface string) {
+	s.mu.Lock()
 	session, ok := s.sessions[surface]
 	wasUnread := ok && session.IsUnread()
 	delete(s.sessions, surface)
-	if wasUnread && s.OnUnreadChange != nil {
-		s.OnUnreadChange()
+	onUnread := s.OnUnreadChange
+	s.mu.Unlock()
+	if wasUnread && onUnread != nil {
+		onUnread()
 	}
 }

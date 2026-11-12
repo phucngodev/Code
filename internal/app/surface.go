@@ -29,6 +29,9 @@ type Surface struct {
 	startErr error
 	// shellPid is the shell process found for this surface, once looked up.
 	shellPid int
+	// foreground is the last foreground process group seen for the shell, so
+	// its arguments are only read when a different command takes the terminal.
+	foreground int
 	// started is set once start has attempted to launch the program, so a
 	// failure is not retried every frame. closed keeps close idempotent.
 	started bool
@@ -135,7 +138,17 @@ func (s *Surface) start() {
 			s.owner.update(func() { s.owner.surfaceExited(s) })
 		},
 		OnNotify: func(title, body string) {
-			s.owner.update(func() { s.owner.routeNotification(s, body) })
+			s.owner.update(func() { s.owner.routeNotification(s, title, body) })
+		},
+		// Search runs across frames of scrollback; OnSearch is the only way a
+		// find bar's "1 of 3" follows it.
+		OnSearch: func(status terminal.SearchStatus) {
+			s.owner.update(func() {
+				if s.owner.focusedSurface() == s {
+					s.owner.find.status = status
+					s.owner.markChanged()
+				}
+			})
 		},
 	}
 	if cfg.Command != "" {
@@ -175,7 +188,9 @@ func (s *Surface) close() {
 	}
 	s.closed = true
 	if s.term != nil {
-		s.term.Close()
+		if err := s.term.Close(); err != nil {
+			log.Printf("codeterm: could not close terminal %s: %v", s.id, err)
+		}
 	}
 	if s.owner != nil {
 		s.owner.app.removeShims(s.id)

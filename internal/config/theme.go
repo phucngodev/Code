@@ -49,30 +49,30 @@ const (
 // More Ghostty options Code reads for the terminals, beside those the Settings
 // window manages.
 const (
-	KeyFontFeature           = "font-feature"
-	KeyAdjustCellWidth       = "adjust-cell-width"
-	KeyAdjustCellHeight      = "adjust-cell-height"
-	KeyBackground            = "background"
-	KeyForeground            = "foreground"
-	KeyCursorColor           = "cursor-color"
-	KeyCursorText            = "cursor-text"
-	KeySelectionBackground   = "selection-background"
-	KeySelectionForeground   = "selection-foreground"
-	KeyPalette               = "palette"
-	KeySearchBackground      = "search-background"
-	KeySearchForeground      = "search-foreground"
-	KeySearchSelBackground   = "search-selected-background"
-	KeySearchSelForeground   = "search-selected-foreground"
-	KeyScrollMultiplier      = "mouse-scroll-multiplier"
-	KeyRightClickAction      = "right-click-action"
-	KeyClipboardWrite        = "clipboard-write"
-	KeyClipboardRead         = "clipboard-read"
-	KeyMinimumContrast       = "minimum-contrast"
-	KeyImageLimit            = "image-storage-limit"
-	KeyWindowPaddingX        = "window-padding-x"
-	KeyWindowPaddingY        = "window-padding-y"
-	KeyWindowPaddingColor    = "window-padding-color"
-	KeyOptionAsAlt           = "macos-option-as-alt"
+	KeyFontFeature         = "font-feature"
+	KeyAdjustCellWidth     = "adjust-cell-width"
+	KeyAdjustCellHeight    = "adjust-cell-height"
+	KeyBackground          = "background"
+	KeyForeground          = "foreground"
+	KeyCursorColor         = "cursor-color"
+	KeyCursorText          = "cursor-text"
+	KeySelectionBackground = "selection-background"
+	KeySelectionForeground = "selection-foreground"
+	KeyPalette             = "palette"
+	KeySearchBackground    = "search-background"
+	KeySearchForeground    = "search-foreground"
+	KeySearchSelBackground = "search-selected-background"
+	KeySearchSelForeground = "search-selected-foreground"
+	KeyScrollMultiplier    = "mouse-scroll-multiplier"
+	KeyRightClickAction    = "right-click-action"
+	KeyClipboardWrite      = "clipboard-write"
+	KeyClipboardRead       = "clipboard-read"
+	KeyMinimumContrast     = "minimum-contrast"
+	KeyImageLimit          = "image-storage-limit"
+	KeyWindowPaddingX      = "window-padding-x"
+	KeyWindowPaddingY      = "window-padding-y"
+	KeyWindowPaddingColor  = "window-padding-color"
+	KeyOptionAsAlt         = "macos-option-as-alt"
 )
 
 // Code-only preference keys, which Ghostty has no option for. They live in the
@@ -84,17 +84,17 @@ const (
 	KeyAgentFinishedSound    = "code-agent-finished-sound"
 )
 
-// supportedKeys is every config key Code reads. A key outside it is ignored
+// supportedKeys is every config key Code acts on. A key outside it is ignored
 // and shown in the Settings window's problems, so a Ghostty option Code does
 // not honour is not silently dropped.
 var supportedKeys = map[string]bool{
 	KeyFontFamily: true, KeyFontSize: true, KeyFontThicken: true, KeyFontFeature: true,
 	KeyAdjustCellWidth: true, KeyAdjustCellHeight: true,
-	KeyTheme: true,
+	KeyTheme:      true,
 	KeyBackground: true, KeyForeground: true,
 	KeyCursorColor: true, KeyCursorText: true,
 	KeySelectionBackground: true, KeySelectionForeground: true,
-	KeyPalette: true,
+	KeyPalette:          true,
 	KeySearchBackground: true, KeySearchForeground: true,
 	KeySearchSelBackground: true, KeySearchSelForeground: true,
 	KeyCursorStyle: true, KeyCursorBlink: true,
@@ -105,20 +105,15 @@ var supportedKeys = map[string]bool{
 	KeyClipboardWrite: true, KeyClipboardRead: true,
 	KeyMinimumContrast: true, KeyImageLimit: true,
 	KeyShellIntegration: true, KeyConfirmClose: true,
-	KeyMouseHideWhileTyping: true, KeyAutoSecureInput: true,
-	KeyNotifyOnFinish: true, KeyNotifyOnFinishAction: true, KeyNotifyOnFinishAfter: true,
 	KeyWorkingDirectory: true, KeyOptionAsAlt: true,
 	KeyWindowPaddingX: true, KeyWindowPaddingY: true, KeyWindowPaddingColor: true,
-	KeyAgentNeedsInputNotify: true, KeyAgentNeedsInputSound: true,
-	KeyAgentFinishedNotify: true, KeyAgentFinishedSound: true,
+	KeyAgentNeedsInputNotify: true, KeyAgentFinishedNotify: true,
 }
 
 // Themes are the terminal colors for light and dark windows.
 type Themes struct {
-	Light     *terminal.Theme
-	Dark      *terminal.Theme
-	LightName string
-	DarkName  string
+	Light *terminal.Theme
+	Dark  *terminal.Theme
 }
 
 // ResolveThemes reads the theme option, which takes Ghostty's
@@ -128,10 +123,8 @@ func ResolveThemes(set *Settings, themesDir string) Themes {
 	value := set.String(KeyTheme, "")
 	lightName, darkName := parseThemeChoice(value)
 	return Themes{
-		Light:     resolveTheme(lightName, themesDir, false),
-		Dark:      resolveTheme(darkName, themesDir, true),
-		LightName: lightName,
-		DarkName:  darkName,
+		Light: resolveTheme(lightName, themesDir, false),
+		Dark:  resolveTheme(darkName, themesDir, true),
 	}
 }
 

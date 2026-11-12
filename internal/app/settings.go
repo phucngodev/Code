@@ -153,6 +153,7 @@ func (a *App) settingsGeneral(c *ui.Context, s *config.Settings) {
 						s.Set(config.KeyMouseHideWhileTyping, boolString(on))
 					}
 				})
+				settingsNote(c, "Not active yet: the value is saved but Code does not hide the pointer.")
 			})
 		})
 		settingsCard(c, func() {
@@ -163,7 +164,7 @@ func (a *App) settingsGeneral(c *ui.Context, s *config.Settings) {
 					{"On", "always"},
 				}, func(value string) { s.Set(config.KeyAutoSecureInput, value) })
 			})
-			settingsNote(c, "Blocks other apps from reading keystrokes typed into Code.")
+			settingsNote(c, "Not active yet: the value is saved but secure keyboard entry is not enforced.")
 		})
 		settingsSection(c, "Scrollback", func() {
 			settingsCard(c, func() {
@@ -335,6 +336,7 @@ func (a *App) settingsNotifications(c *ui.Context, s *config.Settings) {
 				})
 			})
 			settingsFootnote(c, "Agent alerts are only for terminals that are not visible.")
+			settingsFootnote(c, "Sound names are saved but no sound is played yet.")
 		})
 		settingsSection(c, "Command finished", func() {
 			settingsCard(c, func() {
@@ -367,6 +369,7 @@ func (a *App) settingsNotifications(c *ui.Context, s *config.Settings) {
 					}
 				})
 			})
+			settingsNote(c, "Not active yet: Code cannot tell when a command finishes, so these values are saved but no alert is raised.")
 		})
 	})
 }

@@ -20,9 +20,11 @@ type Event struct {
 	SessionID string `json:"sessionID,omitempty"`
 	// SurfaceID is the terminal the event is about.
 	SurfaceID string `json:"surfaceID,omitempty"`
-	// WorkspaceID is the workspace the terminal belongs to.
+	// WorkspaceID is the workspace the terminal belongs to. The app drops an
+	// event whose workspace disagrees with the terminal it names.
 	WorkspaceID string `json:"workspaceID,omitempty"`
-	// Cwd is where the agent runs.
+	// Cwd is where the agent runs. It describes the sender; the shell's own
+	// working directory is what the sidebar shows.
 	Cwd string `json:"cwd,omitempty"`
 	// At orders events, since hooks race each other to the socket.
 	At time.Time `json:"at"`

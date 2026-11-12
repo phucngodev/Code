@@ -41,7 +41,7 @@ func processDir(pid int) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	return path, true
+	return validProcessDir(path)
 }
 
 // foregroundPID returns the PID of the process group the terminal whose shell

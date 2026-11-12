@@ -1,29 +1,75 @@
 package app
 
 import (
+	"log"
 	"strings"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"github.com/phucngodev/code/internal/history"
 	"github.com/phucngodev/code/internal/model"
 )
 
-// loadHistory scans the agents' transcripts once, off the main thread, when the
-// sessions panel first shows.
-func (w *WindowState) loadHistory() {
-	if w.history.loaded || w.history.loading {
+// loadHistory scans the agents' transcripts once for the whole app, off the
+// main thread, and gives the result to every window's sessions panel.
+func (a *App) loadHistory() {
+	a.historyMu.Lock()
+	if a.historyLoading || a.historyLoaded {
+		a.historyMu.Unlock()
 		return
 	}
-	w.history.loading = true
+	a.historyLoading = true
+	a.historyMu.Unlock()
 	go func() {
+		// A panic in a scan must not leave the sessions panel empty forever.
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("codeterm: session scan failed: %v", r)
+				a.historyMu.Lock()
+				a.historyLoading = false
+				a.historyLoaded = true
+				a.historyMu.Unlock()
+			}
+		}()
 		sessions := history.Scan(history.DefaultRoots(), history.DefaultLimit)
-		w.update(func() {
-			w.history.sessions = sessions
-			w.history.loading = false
-			w.history.loaded = true
-		})
+		a.historyMu.Lock()
+		a.historySessions = sessions
+		a.historyLoading = false
+		a.historyLoaded = true
+		a.historyMu.Unlock()
+		mygo.RunOnMain(a.invalidateAll)
 	}()
+}
+
+// historyReady reports whether a scan has finished.
+func (a *App) historyReady() bool {
+	a.historyMu.Lock()
+	defer a.historyMu.Unlock()
+	return a.historyLoaded && !a.historyLoading
+}
+
+// historyResults returns the sessions a scan found.
+func (a *App) historyResults() []history.Session {
+	a.historyMu.Lock()
+	defer a.historyMu.Unlock()
+	return append([]history.Session(nil), a.historySessions...)
+}
+
+// resetHistory asks for a fresh scan the next time a sidebar shows its panel.
+func (a *App) resetHistory() {
+	a.historyMu.Lock()
+	a.historyLoaded = false
+	a.historyMu.Unlock()
+}
+
+// loadHistory copies the app's scan into this window's panel once it is ready.
+func (w *WindowState) loadHistory() {
+	w.app.loadHistory()
+	if !w.history.loaded && w.app.historyReady() {
+		w.history.sessions = w.app.historyResults()
+		w.history.loaded = true
+	}
 }
 
 // buildSessions draws the sessions panel at the bottom of the sidebar: a

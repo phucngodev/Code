@@ -3,8 +3,11 @@ package app
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
+
+	"github.com/phucngodev/code/internal/agent"
 )
 
 // shellPID returns the PID of the shell running in this surface. The app
@@ -60,16 +63,18 @@ func (a *App) assignShells() {
 	for time.Now().Before(deadline) {
 		children := childPIDs(os.Getpid())
 		a.shellMu.Lock()
+		var fresh []int
 		for _, pid := range children {
-			if a.shellKnown[pid] {
+			if a.shellKnown[pid] || isHelperProcess(pid) {
 				continue
 			}
-			if len(a.shellQueue) == 0 {
-				break
-			}
-			s := a.shellQueue[0]
-			a.shellQueue = a.shellQueue[1:]
-			s.shellPid = pid
+			fresh = append(fresh, pid)
+		}
+		if len(fresh) > 0 && len(a.shellQueue) > 0 {
+			// PIDs rise with creation order, which follows the order the
+			// surfaces started, so the queue is matched in that order.
+			sort.Ints(fresh)
+			a.shellQueue = matchShells(a.shellQueue, fresh)
 		}
 		known := make(map[int]bool, len(children))
 		for _, pid := range children {
@@ -77,24 +82,85 @@ func (a *App) assignShells() {
 		}
 		a.shellKnown = known
 		done := len(a.shellQueue) == 0
+		a.shellWatching = !done
 		a.shellMu.Unlock()
 		if done {
-			a.shellMu.Lock()
-			a.shellWatching = false
-			a.shellMu.Unlock()
 			return
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 	a.shellMu.Lock()
 	a.shellWatching = false
+	// A surface whose shell never appeared must not stay queued, or a later
+	// pane would be given the wrong shell.
+	a.shellQueue = nil
 	a.shellMu.Unlock()
 }
 
-// sshRemote returns the host an ssh running in the terminal's shell connects
-// to, or empty when none runs.
-func sshRemote(shellPID int) string {
-	pid := foregroundPID(shellPID)
+// matchShells pairs new children with the surfaces waiting for them. A distinct
+// working directory identifies the pane; otherwise the order they started is
+// the best Code can do, since the terminal plugin does not expose its child PID.
+func matchShells(queue []*Surface, pids []int) []*Surface {
+	dirs := map[int]string{}
+	for _, pid := range pids {
+		if dir, ok := processDir(pid); ok {
+			dirs[pid] = dir
+		}
+	}
+	used := map[int]bool{}
+	var waiting []*Surface
+	for _, s := range queue {
+		if s.closed {
+			continue
+		}
+		pick := -1
+		if s.dir != "" {
+			var matches []int
+			for _, pid := range pids {
+				if !used[pid] && dirs[pid] == s.dir {
+					matches = append(matches, pid)
+				}
+			}
+			if len(matches) == 1 {
+				pick = matches[0]
+			}
+		}
+		if pick < 0 {
+			for _, pid := range pids {
+				if !used[pid] {
+					pick = pid
+					break
+				}
+			}
+		}
+		if pick < 0 {
+			waiting = append(waiting, s)
+			continue
+		}
+		used[pick] = true
+		s.shellPid = pick
+	}
+	return waiting
+}
+
+// isHelperProcess reports a direct child that is Code acting as the cde helper
+// rather than a terminal's shell.
+func isHelperProcess(pid int) bool {
+	args := processArgs(pid)
+	if len(args) < 2 {
+		return false
+	}
+	switch filepath.Base(args[0]) {
+	case "cde", "Code", "code":
+		return agent.IsCdeCommand(args[1:])
+	}
+	return false
+}
+
+// sshRemoteFor returns the host an ssh running as pid connects to, or empty
+// when it is not an ssh. The foreground process group is read by the caller,
+// which caches it so the arguments are not read every half second.
+func sshRemoteFor(pid int) string {
 	if pid <= 0 {
 		return ""
 	}
@@ -145,6 +211,20 @@ func sshHost(arg string) string {
 		arg = arg[:colon]
 	}
 	return arg
+}
+
+// validProcessDir keeps a process's reported cwd only when it is a real
+// absolute directory. A hard-coded ABI offset on macOS can otherwise hand a
+// pane garbage that ends up in its tab title and saved session.
+func validProcessDir(path string) (string, bool) {
+	path = strings.TrimSuffix(path, " (deleted)")
+	if path == "" || !filepath.IsAbs(path) {
+		return "", false
+	}
+	if info, err := os.Stat(path); err != nil || !info.IsDir() {
+		return "", false
+	}
+	return path, true
 }
 
 // foregroundGroupRunning reports whether a terminal with process group pgrp

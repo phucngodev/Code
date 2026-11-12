@@ -38,7 +38,13 @@ done
 for target in "${targets[@]}"; do
   case "$target" in
     darwin/*) ./scripts/package.sh -platform "$target" ;;
-    linux/*)  go tool mygo build -platform "$target" ;;
+    linux/*)
+      go tool mygo build -platform "$target"
+      # mygo build bundles its own pinned libghostty-vt beside the executable
+      # and inside the .deb and .tar.gz; Code ships only the library
+      # scripts/build-libghostty.sh built, so strip MyGo's everywhere.
+      go run ./internal/packageclean "build/${target//\//-}"
+      ;;
   esac
 done
 

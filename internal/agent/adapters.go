@@ -333,8 +333,8 @@ func openCodeEnvironment(environment map[string]string, cde string) map[string]s
 			return map[string]string{}
 		}
 	}
-	config["plugin"] = append(anySlice(config["plugin"]), plugin)
-	config["plugins"] = append(anySlice(config["plugins"]), pluginDir)
+	config["plugin"] = appendUnique(anySlice(config["plugin"]), plugin)
+	config["plugins"] = appendUnique(anySlice(config["plugins"]), pluginDir)
 	data, err := json.Marshal(config)
 	if err != nil {
 		return map[string]string{}
@@ -347,6 +347,17 @@ func anySlice(value any) []any {
 		return slice
 	}
 	return nil
+}
+
+// appendUnique keeps a plugin path from being added twice when an agent
+// launches another agent with the same environment.
+func appendUnique(values []any, value string) []any {
+	for _, existing := range values {
+		if text, ok := existing.(string); ok && text == value {
+			return values
+		}
+	}
+	return append(values, value)
 }
 
 // Pi and PiG load extensions from their own config folders, so Code installs
