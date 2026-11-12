@@ -187,6 +187,38 @@ func TestAppKeyFreesControlKeysOnLinux(t *testing.T) {
 	}
 }
 
+func TestCleanTitleLocalAndRemote(t *testing.T) {
+	local, err := os.Hostname()
+	if err != nil {
+		t.Skipf("no host name: %v", err)
+	}
+	short := local
+	if i := strings.IndexByte(short, '.'); i >= 0 {
+		short = short[:i]
+	}
+	remote := short + "-remote"
+	cases := []struct{ in, want string }{
+		// The machine Code runs on: show the path.
+		{"user@" + local + ":~/Projects", "~/Projects"},
+		{"user@" + short + ":~", "~"},
+		{"user@localhost:/srv/app", "/srv/app"},
+		// Another machine, reached by ssh: show its host.
+		{"user@" + remote + ":~/Projects", remote},
+		{"user@" + remote + ".example.com:/srv", remote + ".example.com"},
+		// A title a program sets is kept.
+		{"vim main.go", "vim main.go"},
+		{"~/Projects", "~/Projects"},
+		{"user@host", "user@host"},
+		{"user@host:", "user@host:"},
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := cleanTitle(c.in); got != c.want {
+			t.Errorf("cleanTitle(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
 func TestSplitArgumentParsing(t *testing.T) {
 	if got := splitNavigation("left"); got != model.NavLeft {
 		t.Fatalf("splitNavigation(left) = %v", got)

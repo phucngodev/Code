@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -577,7 +578,7 @@ func (w *WindowState) title() string {
 		return "Code"
 	}
 	if tab := ws.SelectedTab(); tab != nil {
-		return ws.DisplayName() + " — " + tab.Title()
+		return ws.DisplayName() + " — " + cleanTitle(tab.Title())
 	}
 	return ws.DisplayName()
 }
@@ -983,13 +984,60 @@ func (w *WindowState) closeFind() {
 // useful part.
 func (w *WindowState) tabLabel(tab *model.Tab[*Surface]) string {
 	s := tab.Focused()
-	if title := s.LeafTitle(); title != "" {
+	if title := cleanTitle(s.LeafTitle()); title != "" {
 		return truncate(title, 24)
 	}
 	if dir := s.LeafDir(); dir != "" {
 		return truncateStart(strings.TrimRight(model.AbbreviateHome(dir), "/"), 28)
 	}
 	return "Terminal"
+}
+
+// cleanTitle reads a shell prompt's "user@host:path" title: on the machine
+// Code runs on it reads as the path, so a tab shows where the terminal is; on
+// another machine, reached by ssh, it reads as that host, so a tab shows which
+// machine it is on. A title a program sets without that shape is kept.
+func cleanTitle(title string) string {
+	at := strings.IndexByte(title, '@')
+	if at <= 0 {
+		return title
+	}
+	colon := strings.IndexByte(title, ':')
+	if colon <= at {
+		return title
+	}
+	host := title[at+1 : colon]
+	path := strings.TrimSpace(title[colon+1:])
+	if host == "" || path == "" {
+		return title
+	}
+	if localHost(host) {
+		return path
+	}
+	return host
+}
+
+// localHost reports whether host names the machine Code runs on, comparing
+// the first label of each name without regard to case, and treating
+// "localhost" as this machine.
+func localHost(host string) bool {
+	if hostLabel(host) == "localhost" {
+		return true
+	}
+	name, err := os.Hostname()
+	if err != nil {
+		return true
+	}
+	return hostLabel(host) == hostLabel(name)
+}
+
+// hostLabel is a host name without its domain, in lower case.
+func hostLabel(host string) string {
+	host = strings.TrimSpace(host)
+	if i := strings.IndexByte(host, '.'); i >= 0 {
+		host = host[:i]
+	}
+	return strings.ToLower(host)
 }
 
 // truncate keeps the start of a string and marks what it drops.
