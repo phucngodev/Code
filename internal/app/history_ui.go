@@ -45,12 +45,12 @@ func (w *WindowState) buildSessions(c *ui.Context) {
 			}
 			ui.Text(c, message).FontSize(11).TextColor(t.TextMuted)
 		} else {
-			ui.Scroll(c).FillWidth().MaxHeight(200).Children(func() {
-				ui.Column(c).FillWidth().Gap(2).Children(func() {
-					for _, session := range shown {
-						w.buildSessionRow(c, session)
-					}
-				})
+			// A List builds only the rows in view, where a Scroll would build
+			// every saved session each frame.
+			ui.List(c, &w.history.list, len(shown), func(i int) {
+				w.buildSessionRow(c, shown[i])
+			}).FillWidth().MaxHeight(200).ItemKey(func(i int) any {
+				return shown[i].Agent + "\x00" + shown[i].ID
 			})
 		}
 		w.sessionSearchRow(c)
@@ -61,18 +61,24 @@ func (w *WindowState) buildSessions(c *ui.Context) {
 func (w *WindowState) sessionSearchRow(c *ui.Context) {
 	t := c.Theme()
 	ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
-		in := ui.SearchField(c, &w.history.query).Placeholder("Search sessions").Grow(1)
+		in := ui.SearchField(c, &w.history.query).Placeholder("Search sessions").Label("Search sessions").Grow(1)
 		if in.Changed() && !w.history.expanded && strings.TrimSpace(w.history.query) != "" {
 			w.history.expanded = true
 		}
-		el := ui.Icon(c, chevronIcon).FontSize(12).TextColor(t.TextMuted).
-			Padding(2, 4).Radius(4).Cursor(ui.CursorPointer)
+		label := "Show sessions"
 		if w.history.expanded {
-			el = el.Rotate(90)
+			label = "Hide sessions"
 		}
+		el := ui.ButtonBase(c).Label(label).Padding(2, 4).Radius(4).Cursor(ui.CursorPointer)
 		if el.Hovered() {
 			el = el.Background(t.SurfaceHover)
 		}
+		el.Children(func() {
+			icon := ui.Icon(c, chevronIcon).FontSize(12).TextColor(t.TextMuted)
+			if w.history.expanded {
+				icon.Rotate(90)
+			}
+		})
 		el.OnClick(func() {
 			w.history.expanded = !w.history.expanded
 			if !w.history.expanded {
@@ -85,7 +91,7 @@ func (w *WindowState) sessionSearchRow(c *ui.Context) {
 
 func (w *WindowState) buildSessionRow(c *ui.Context, session history.Session) {
 	t := c.Theme()
-	row := ui.Row(c).FillWidth().Padding(4, 4).Gap(8).AlignItems(ui.Center)
+	row := ui.ButtonBase(c).FillWidth().Padding(4, 4).Gap(8).AlignItems(ui.Center).Label(session.DisplayTitle())
 	hovered := row.Hovered()
 	if hovered {
 		row.Background(t.Background.Mix(t.Text, 0.10))

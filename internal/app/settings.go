@@ -111,7 +111,7 @@ func (a *App) settingsTabBar(c *ui.Context) {
 func (a *App) settingsGeneral(c *ui.Context, s *config.Settings) {
 	ui.Column(c).FillWidth().Gap(18).Children(func() {
 		settingsCard(c, func() {
-			settingsRow(c, "Shell", func() {
+			settingsRow(c, "Shell", func(caption ui.Element) {
 				command := s.String(config.KeyCommand, "")
 				value := command
 				if value == "" {
@@ -121,7 +121,7 @@ func (a *App) settingsGeneral(c *ui.Context, s *config.Settings) {
 				if !containsString(options, value) {
 					options = append([]string{value}, options...)
 				}
-				if ui.Select(c, &value, options).Width(240).Changed() {
+				if ui.Select(c, &value, options).Width(240).LabelledBy(caption).Changed() {
 					if value == "Login shell" {
 						s.Set(config.KeyCommand, "")
 					} else {
@@ -132,32 +132,32 @@ func (a *App) settingsGeneral(c *ui.Context, s *config.Settings) {
 		})
 		settingsSection(c, "Terminals", func() {
 			settingsCard(c, func() {
-				settingsRow(c, "Confirm closing terminals", func() {
-					settingsChoiceSelect(c, s.String(config.KeyConfirmClose, "true"), []settingsChoice{
+				settingsRow(c, "Confirm closing terminals", func(caption ui.Element) {
+					settingsChoiceSelect(c, caption, s.String(config.KeyConfirmClose, "true"), []settingsChoice{
 						{"Never", "false"},
 						{"With a running process", "true"},
 						{"Always", "always"},
 					}, func(value string) { s.Set(config.KeyConfirmClose, value) })
 				})
 				ui.Divider(c)
-				settingsRow(c, "Copy on select", func() {
+				settingsRow(c, "Copy on select", func(caption ui.Element) {
 					on := copyOnSelectEnabled(s)
-					if ui.Switch(c, &on).Changed() {
+					if ui.Switch(c, &on).LabelledBy(caption).Changed() {
 						s.Set(config.KeyCopyOnSelect, boolString(on))
 					}
 				})
 				ui.Divider(c)
-				settingsRow(c, "Hide mouse pointer while typing", func() {
+				settingsRow(c, "Hide mouse pointer while typing", func(caption ui.Element) {
 					on := s.Bool(config.KeyMouseHideWhileTyping, false)
-					if ui.Switch(c, &on).Changed() {
+					if ui.Switch(c, &on).LabelledBy(caption).Changed() {
 						s.Set(config.KeyMouseHideWhileTyping, boolString(on))
 					}
 				})
 			})
 		})
 		settingsCard(c, func() {
-			settingsRow(c, "Secure keyboard entry", func() {
-				settingsChoiceSelect(c, s.String(config.KeyAutoSecureInput, "true"), []settingsChoice{
+			settingsRow(c, "Secure keyboard entry", func(caption ui.Element) {
+				settingsChoiceSelect(c, caption, s.String(config.KeyAutoSecureInput, "true"), []settingsChoice{
 					{"Off", "false"},
 					{"At password prompts", "true"},
 					{"On", "always"},
@@ -167,16 +167,16 @@ func (a *App) settingsGeneral(c *ui.Context, s *config.Settings) {
 		})
 		settingsSection(c, "Scrollback", func() {
 			settingsCard(c, func() {
-				settingsRow(c, "Scrollback limit (bytes)", func() {
+				settingsRow(c, "Scrollback limit (bytes)", func(caption ui.Element) {
 					value := float64(s.Int(config.KeyScrollback, 10_000_000))
-					if ui.NumberInput(c, &value, 0, 1_000_000_000, 1_000_000).Width(180).Changed() {
+					if ui.NumberInput(c, &value, 0, 1_000_000_000, 1_000_000).Width(180).LabelledBy(caption).Changed() {
 						s.Set(config.KeyScrollback, fmt.Sprintf("%d", int(value)))
 					}
 				})
 				ui.Divider(c)
-				settingsRow(c, "Shell integration", func() {
+				settingsRow(c, "Shell integration", func(caption ui.Element) {
 					on := s.Bool(config.KeyShellIntegration, true)
-					if ui.Switch(c, &on).Changed() {
+					if ui.Switch(c, &on).LabelledBy(caption).Changed() {
 						s.Set(config.KeyShellIntegration, boolString(on))
 					}
 				})
@@ -192,13 +192,13 @@ func (a *App) settingsAppearance(c *ui.Context, s *config.Settings) {
 	ui.Column(c).FillWidth().Gap(18).Children(func() {
 		settingsSection(c, "Colors", func() {
 			settingsCard(c, func() {
-				settingsRow(c, "Theme", func() {
+				settingsRow(c, "Theme", func(caption ui.Element) {
 					names := config.ThemeNames()
 					value := config.ThemeName(s.String(config.KeyTheme, ""))
 					if !containsString(names, value) {
 						names = append([]string{value}, names...)
 					}
-					if ui.Select(c, &value, names).Width(240).Changed() {
+					if ui.Select(c, &value, names).Width(240).LabelledBy(caption).Changed() {
 						s.Set(config.KeyTheme, value)
 					}
 				})
@@ -208,7 +208,7 @@ func (a *App) settingsAppearance(c *ui.Context, s *config.Settings) {
 		})
 		settingsSection(c, "Text", func() {
 			settingsCard(c, func() {
-				settingsRow(c, "Font", func() {
+				settingsRow(c, "Font", func(caption ui.Element) {
 					families := monospacedFamilies()
 					current := primaryFamily(s)
 					choices := []settingsChoice{{name: "Default", value: ""}}
@@ -220,21 +220,21 @@ func (a *App) settingsAppearance(c *ui.Context, s *config.Settings) {
 					for _, family := range families {
 						choices = append(choices, settingsChoice{name: family, value: family})
 					}
-					settingsChoiceSelect(c, current, choices, func(value string) {
+					settingsChoiceSelect(c, caption, current, choices, func(value string) {
 						s.SetPrimaryFontFamily(value)
 					})
 				})
 				ui.Divider(c)
-				settingsRow(c, "Size", func() {
+				settingsRow(c, "Size", func(caption ui.Element) {
 					value := s.Float(config.KeyFontSize, 13)
-					if ui.NumberInput(c, &value, 6, 40, 1).Width(120).Changed() {
+					if ui.NumberInput(c, &value, 6, 40, 1).Width(120).LabelledBy(caption).Changed() {
 						s.Set(config.KeyFontSize, fmt.Sprintf("%g", value))
 					}
 				})
 				ui.Divider(c)
-				settingsRow(c, "Thicken text", func() {
+				settingsRow(c, "Thicken text", func(caption ui.Element) {
 					on := s.Bool(config.KeyFontThicken, false)
-					if ui.Switch(c, &on).Changed() {
+					if ui.Switch(c, &on).LabelledBy(caption).Changed() {
 						s.Set(config.KeyFontThicken, boolString(on))
 					}
 				})
@@ -242,17 +242,17 @@ func (a *App) settingsAppearance(c *ui.Context, s *config.Settings) {
 		})
 		settingsSection(c, "Cursor", func() {
 			settingsCard(c, func() {
-				settingsRow(c, "Shape", func() {
+				settingsRow(c, "Shape", func(caption ui.Element) {
 					value := s.String(config.KeyCursorStyle, "block")
 					options := []string{"block", "bar", "underline", "block_hollow"}
-					if ui.Select(c, &value, options).Width(200).Changed() {
+					if ui.Select(c, &value, options).Width(200).LabelledBy(caption).Changed() {
 						s.Set(config.KeyCursorStyle, value)
 					}
 				})
 				ui.Divider(c)
-				settingsRow(c, "Blink", func() {
+				settingsRow(c, "Blink", func(caption ui.Element) {
 					on := s.Bool(config.KeyCursorBlink, true)
-					if ui.Switch(c, &on).Changed() {
+					if ui.Switch(c, &on).LabelledBy(caption).Changed() {
 						s.Set(config.KeyCursorBlink, boolString(on))
 					}
 				})
@@ -309,60 +309,60 @@ func (a *App) settingsNotifications(c *ui.Context, s *config.Settings) {
 	ui.Column(c).FillWidth().Gap(18).Children(func() {
 		settingsSection(c, "Agent needs input", func() {
 			settingsCard(c, func() {
-				settingsRow(c, "Notification", func() {
+				settingsRow(c, "Notification", func(caption ui.Element) {
 					on := s.Bool(config.KeyAgentNeedsInputNotify, true)
-					if ui.Switch(c, &on).Changed() {
+					if ui.Switch(c, &on).LabelledBy(caption).Changed() {
 						s.Set(config.KeyAgentNeedsInputNotify, boolString(on))
 					}
 				})
 				ui.Divider(c)
-				settingsRow(c, "Sound", func() {
-					settingsSoundSelect(c, s, config.KeyAgentNeedsInputSound, "Ping", sounds)
+				settingsRow(c, "Sound", func(caption ui.Element) {
+					settingsSoundSelect(c, caption, s, config.KeyAgentNeedsInputSound, "Ping", sounds)
 				})
 			})
 		})
 		settingsSection(c, "Agent finished", func() {
 			settingsCard(c, func() {
-				settingsRow(c, "Notification", func() {
+				settingsRow(c, "Notification", func(caption ui.Element) {
 					on := s.Bool(config.KeyAgentFinishedNotify, true)
-					if ui.Switch(c, &on).Changed() {
+					if ui.Switch(c, &on).LabelledBy(caption).Changed() {
 						s.Set(config.KeyAgentFinishedNotify, boolString(on))
 					}
 				})
 				ui.Divider(c)
-				settingsRow(c, "Sound", func() {
-					settingsSoundSelect(c, s, config.KeyAgentFinishedSound, "Glass", sounds)
+				settingsRow(c, "Sound", func(caption ui.Element) {
+					settingsSoundSelect(c, caption, s, config.KeyAgentFinishedSound, "Glass", sounds)
 				})
 			})
 			settingsFootnote(c, "Agent alerts are only for terminals that are not visible.")
 		})
 		settingsSection(c, "Command finished", func() {
 			settingsCard(c, func() {
-				settingsRow(c, "Notify", func() {
-					settingsChoiceSelect(c, s.String(config.KeyNotifyOnFinish, "never"), []settingsChoice{
+				settingsRow(c, "Notify", func(caption ui.Element) {
+					settingsChoiceSelect(c, caption, s.String(config.KeyNotifyOnFinish, "never"), []settingsChoice{
 						{"Never", "never"},
 						{"When the terminal is not visible", "unfocused"},
 						{"Always", "always"},
 					}, func(value string) { s.Set(config.KeyNotifyOnFinish, value) })
 				})
 				ui.Divider(c)
-				settingsRow(c, "Minimum duration (seconds)", func() {
+				settingsRow(c, "Minimum duration (seconds)", func(caption ui.Element) {
 					value := float64(s.Int(config.KeyNotifyOnFinishAfter, 5))
-					if ui.NumberInput(c, &value, 0, 600, 1).Width(140).Changed() {
+					if ui.NumberInput(c, &value, 0, 600, 1).Width(140).LabelledBy(caption).Changed() {
 						s.Set(config.KeyNotifyOnFinishAfter, fmt.Sprintf("%ds", int(value)))
 					}
 				})
 				ui.Divider(c)
-				settingsRow(c, "Notification", func() {
+				settingsRow(c, "Notification", func(caption ui.Element) {
 					on := notifyActionOn(s, "notify")
-					if ui.Switch(c, &on).Changed() {
+					if ui.Switch(c, &on).LabelledBy(caption).Changed() {
 						setNotifyAction(s, "notify", on)
 					}
 				})
 				ui.Divider(c)
-				settingsRow(c, "Bell", func() {
+				settingsRow(c, "Bell", func(caption ui.Element) {
 					on := notifyActionOn(s, "bell")
-					if ui.Switch(c, &on).Changed() {
+					if ui.Switch(c, &on).LabelledBy(caption).Changed() {
 						setNotifyAction(s, "bell", on)
 					}
 				})
@@ -439,10 +439,10 @@ func (a *App) settingsProblems() []string {
 
 // settingsSliderRow is a labeled row holding a slider and its percentage.
 func (a *App) settingsSliderRow(c *ui.Context, s *config.Settings, label, key string, def, lo, hi float64) {
-	settingsRow(c, label, func() {
+	settingsRow(c, label, func(caption ui.Element) {
 		value := s.Float(key, def)
 		ui.Row(c).Width(240).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Slider(c, &value, lo, hi).Grow(1)
+			ui.Slider(c, &value, lo, hi).LabelledBy(caption).Grow(1)
 			ui.Text(c, fmt.Sprintf("%.0f%%", value*100)).FontSize(12).TextColor(c.Theme().TextMuted).Width(44)
 		})
 		if value != s.Float(key, def) {
@@ -452,12 +452,12 @@ func (a *App) settingsSliderRow(c *ui.Context, s *config.Settings, label, key st
 }
 
 // settingsSoundSelect chooses an alert sound by name.
-func settingsSoundSelect(c *ui.Context, s *config.Settings, key, def string, sounds []string) {
+func settingsSoundSelect(c *ui.Context, caption ui.Element, s *config.Settings, key, def string, sounds []string) {
 	value := s.String(key, def)
 	if !containsString(sounds, value) {
 		sounds = append([]string{value}, sounds...)
 	}
-	if ui.Select(c, &value, sounds).Width(200).Changed() {
+	if ui.Select(c, &value, sounds).Width(200).LabelledBy(caption).Changed() {
 		s.Set(key, value)
 	}
 }

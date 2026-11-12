@@ -21,10 +21,11 @@ func settingsCard(c *ui.Context, fn func()) {
 }
 
 // settingsRow places a label and its control on one line.
-func settingsRow(c *ui.Context, label string, control func()) {
-	ui.Row(c).FillWidth().MinHeight(42).Padding(9, 12).Gap(12).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, label).Grow(1)
-		control()
+func settingsRow(c *ui.Context, label string, control func(caption ui.Element)) {
+	ui.Row(c).FillWidth().MinHeight(42).Padding(9, 12).Gap(12).AlignItems(ui.Center).
+		Role(ui.RoleGroup).Label(label).Children(func() {
+		caption := ui.Text(c, label).Grow(1)
+		control(caption)
 	})
 }
 
@@ -46,7 +47,7 @@ type settingsChoice struct {
 
 // settingsChoiceSelect shows a select whose names map back to values, and
 // reports a new choice by calling pick.
-func settingsChoiceSelect(c *ui.Context, current string, choices []settingsChoice, pick func(string)) {
+func settingsChoiceSelect(c *ui.Context, caption ui.Element, current string, choices []settingsChoice, pick func(string)) {
 	names := make([]string, len(choices))
 	selected := choices[0].name
 	for i, choice := range choices {
@@ -55,7 +56,7 @@ func settingsChoiceSelect(c *ui.Context, current string, choices []settingsChoic
 			selected = choice.name
 		}
 	}
-	if ui.Select(c, &selected, names).Width(240).Changed() {
+	if ui.Select(c, &selected, names).Width(240).LabelledBy(caption).Changed() {
 		for _, choice := range choices {
 			if choice.name == selected {
 				pick(choice.value)

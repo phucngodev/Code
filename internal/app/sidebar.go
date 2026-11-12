@@ -63,7 +63,7 @@ func (w *WindowState) buildWorkspaceList(c *ui.Context) {
 	themed.Children(func() {
 		list := ui.List(c, &w.workspaceList, len(ws), func(i int) {
 			w.buildWorkspaceRow(c, ws[i])
-		}).Fill().FocusRing(false)
+		}).Fill().FocusRing(false).ItemKey(func(i int) any { return ws[i].ID })
 		if list.Changed() && w.workspaceSelected >= 0 && w.workspaceSelected < len(ws) {
 			w.store.Select(ws[w.workspaceSelected])
 			w.focusSelected()
@@ -97,17 +97,19 @@ func (w *WindowState) buildWorkspaceRow(c *ui.Context, ws *model.Workspace[*Surf
 			return
 		}
 		ui.Column(c).Grow(1).Gap(0).Children(func() {
-			ui.Text(c, ws.DisplayName()).Bold()
+			ui.Text(c, ws.DisplayName()).Bold().SingleLine()
 			if dir := displayDir(workspaceDir(ws)); dir != "" {
-				ui.Text(c, dir).FontSize(11).TextColor(t.TextMuted)
+				ui.Text(c, dir).FontSize(11).TextColor(t.TextMuted).SingleLine()
 			}
 		})
 		if hovered {
-			close := ui.Text(c, "×").FontSize(11).TextColor(t.TextMuted).
-				Padding(0, 3).Radius(4).Cursor(ui.CursorPointer)
+			close := ui.ButtonBase(c).Label("Close workspace").Padding(0, 3).Radius(4).Cursor(ui.CursorPointer)
+			closeColor := t.TextMuted
 			if close.Hovered() {
-				close = close.Background(t.SurfaceHover).TextColor(t.Text)
+				close = close.Background(t.SurfaceHover)
+				closeColor = t.Text
 			}
+			close.Children(func() { ui.Text(c, "×").FontSize(11).TextColor(closeColor) })
 			close.OnClick(func() { w.closeWorkspace(ws) })
 		} else if status, ok := w.workspaceStatus(ws); ok {
 			ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
@@ -149,7 +151,7 @@ func (w *WindowState) buildAgentList(c *ui.Context) {
 		}
 		for _, row := range rows {
 			row := row
-			item := ui.Row(c).Padding(6, 6).Gap(8).Radius(7).AlignItems(ui.Center)
+			item := ui.ButtonBase(c).Padding(6, 6).Gap(8).Radius(7).AlignItems(ui.Center).Label(row.title)
 			hovered := item.Hovered()
 			if hovered {
 				item.Background(t.Background.Mix(t.Text, 0.10))
@@ -161,9 +163,9 @@ func (w *WindowState) buildAgentList(c *ui.Context) {
 					ui.Box(c).Size(12, 12)
 				}
 				ui.Column(c).Grow(1).Gap(1).Children(func() {
-					ui.Text(c, row.title)
+					ui.Text(c, row.title).SingleLine()
 					if row.subtitle != "" {
-						ui.Text(c, row.subtitle).FontSize(11).TextColor(t.TextMuted)
+						ui.Text(c, row.subtitle).FontSize(11).TextColor(t.TextMuted).SingleLine()
 					}
 				})
 			})
@@ -364,7 +366,9 @@ func (w *WindowState) closePalette() {
 }
 
 type paletteItem struct {
-	surface   *Surface
+	surface *Surface
+	// id is the item's stable identity, so a list choice follows it.
+	id        string
 	title     string
 	detail    string
 	workspace string
@@ -393,6 +397,7 @@ func (w *WindowState) paletteItems() []paletteItem {
 			s := tab.Focused()
 			items = append(items, paletteItem{
 				surface:     s,
+				id:          "workspace:" + ws.ID,
 				title:       ws.DisplayName(),
 				detail:      paletteDetail(s, ws.DisplayName()),
 				workspace:   ws.DisplayName(),
@@ -408,6 +413,7 @@ func (w *WindowState) paletteItems() []paletteItem {
 			title := model.DisplayTitle[*Surface](s)
 			items = append(items, paletteItem{
 				surface:   s,
+				id:        "pane:" + s.id,
 				title:     title,
 				detail:    paletteDetail(s, title),
 				workspace: ws.DisplayName(),
@@ -511,7 +517,7 @@ func (w *WindowState) buildPalette(c *ui.Context) {
 				ui.Text(c, "Nothing to go to").Padding(14).TextColor(t.TextMuted)
 			} else {
 				w.palette.list.Selected = &w.palette.selected
-				list := ui.List(c, &w.palette.list, len(items)).MaxHeight(370).Grow(1).Rows(func(row ui.ListRow) {
+				list := ui.List(c, &w.palette.list, len(items)).MaxHeight(370).Grow(1).ItemKey(func(i int) any { return items[i].id }).Rows(func(row ui.ListRow) {
 					w.buildPaletteRow(row, items[row.Index], row.Index == len(items)-1)
 				})
 				if w.palette.scrollTo >= 0 {

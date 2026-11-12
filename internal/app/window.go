@@ -84,6 +84,8 @@ type historyState struct {
 	sessions []history.Session
 	loading  bool
 	loaded   bool
+	// list builds only the session rows in view.
+	list ui.ListState
 }
 
 type findState struct {
@@ -170,7 +172,7 @@ func (w *WindowState) buildTopBar(c *ui.Context) {
 			for i, tab := range ws.Tabs {
 				w.buildTab(c, ws, tab, i, tab == ws.SelectedTab())
 				if i < len(ws.Tabs)-1 && tab != ws.SelectedTab() && ws.Tabs[i+1] != ws.SelectedTab() {
-					ui.Divider(c).Height(18)
+					ui.Divider(c)
 				}
 			}
 		}
@@ -186,7 +188,7 @@ func (w *WindowState) buildTopBar(c *ui.Context) {
 // the pointer is over it.
 func (w *WindowState) iconSVGButton(c *ui.Context, icon *ui.SVG, description string, size float32, onClick func()) {
 	t := c.Theme()
-	el := ui.Row(c).Padding(2, 6).Radius(6).AlignItems(ui.Center).Cursor(ui.CursorPointer)
+	el := ui.ButtonBase(c).Padding(2, 6).Radius(6).AlignItems(ui.Center).Cursor(ui.CursorPointer)
 	hovered := el.Hovered()
 	color := t.TextMuted
 	if hovered {
@@ -230,43 +232,52 @@ func (w *WindowState) buildTab(c *ui.Context, ws *model.Workspace[*Surface], tab
 		textColor = t.Text
 	}
 	row.Children(func() {
-		if w.agentRunning(leaves) {
-			ui.Icon(c, sparkleIcon).FontSize(13).TextColor(textColor)
-		} else {
-			ui.Icon(c, terminalIcon).FontSize(13).TextColor(textColor)
-		}
-		if indicator, ok := w.indicatorFor(leaves); ok {
-			agentGlyph(c, indicator)
-		} else {
-			ui.Box(c).Size(12, 12)
-		}
-		ui.Text(c, label).FontSize(12).TextColor(textColor)
-		if selected || hovered {
-			close := ui.Text(c, "×").FontSize(11).TextColor(t.TextMuted).
-				Padding(0, 3).Radius(4).Cursor(ui.CursorPointer)
-			if close.Hovered() {
-				close = close.Background(t.SurfaceHover).TextColor(t.Text)
+		// The tab is its own focusable element and the close a sibling, so
+		// both reach assistive technology: a tab role is a leaf that keeps no
+		// children of its own.
+		head := ui.ButtonBase(c).Gap(6).AlignItems(ui.Center).Role(ui.RoleTab).Label(label).AccessSelected(selected)
+		head.OnClick(func() {
+			ws.Select(tab)
+			w.store.Notify()
+			w.focusSelected()
+		})
+		head.Children(func() {
+			if w.agentRunning(leaves) {
+				ui.Icon(c, sparkleIcon).FontSize(13).TextColor(textColor)
+			} else {
+				ui.Icon(c, terminalIcon).FontSize(13).TextColor(textColor)
 			}
+			if indicator, ok := w.indicatorFor(leaves); ok {
+				agentGlyph(c, indicator)
+			} else {
+				ui.Box(c).Size(12, 12)
+			}
+			ui.Text(c, label).FontSize(12).TextColor(textColor).SingleLine()
+		})
+		if selected || hovered {
+			close := ui.ButtonBase(c).Label("Close tab").Padding(0, 3).Radius(4).Cursor(ui.CursorPointer)
+			closeColor := t.TextMuted
+			if close.Hovered() {
+				close = close.Background(t.SurfaceHover)
+				closeColor = t.Text
+			}
+			close.Children(func() { ui.Text(c, "×").FontSize(11).TextColor(closeColor) })
 			close.OnClick(func() { w.closeTab(tab) })
 		}
-	})
-	row.OnClick(func() {
-		ws.Select(tab)
-		w.store.Notify()
-		w.focusSelected()
 	})
 }
 
 func (w *WindowState) buildBell(c *ui.Context) {
 	t := c.Theme()
 	count := w.unreadCount()
-	el := ui.Row(c).Padding(2, 6).Radius(6).AlignItems(ui.Center).Cursor(ui.CursorPointer)
+	el := ui.ButtonBase(c).Padding(2, 6).Radius(6).AlignItems(ui.Center).Cursor(ui.CursorPointer)
 	hovered := el.Hovered()
 	color := t.TextMuted
 	if hovered {
 		el.Background(t.SurfaceHover)
 		color = t.Text
 	}
+	el.Label("Agent alerts")
 	el.Description("Jump to the agent that needs you")
 	el.OnClick(func() { w.jumpToLatestUnread() })
 	el.Children(func() {
@@ -401,7 +412,7 @@ func (w *WindowState) buildPaneGrip(c *ui.Context, s *Surface) {
 	t := c.Theme()
 	grip := ui.Row(c).Attach(ui.AnchorTop, ui.AnchorTop).Top(6).Gap(3).
 		Padding(3, 7).Radius(5).Background(t.Surface).Border(1, t.Border).
-		Cursor(ui.CursorPointer).Drag(s)
+		Cursor(ui.CursorPointer).Drag(s).Label("Move pane").Description("Drag to move or split")
 	grip.Children(func() {
 		for i := 0; i < 3; i++ {
 			ui.Box(c).Size(3, 3).Radius(2).Background(t.TextMuted)

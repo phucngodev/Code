@@ -11,6 +11,7 @@ import (
 
 	"github.com/phucngodev/code/internal/agent"
 	"github.com/phucngodev/code/internal/config"
+	"github.com/phucngodev/code/internal/history"
 	"github.com/phucngodev/code/internal/model"
 )
 
@@ -114,6 +115,59 @@ func TestAgentStoreFollowsTerminalOwners(t *testing.T) {
 	a.surfaceOwners["s"] = &WindowState{}
 	if !a.agents.IsLive("s") {
 		t.Fatal("a terminal with a window should be live")
+	}
+}
+
+func TestTitleBarButtonsAreAccessible(t *testing.T) {
+	w := testWindow(t)
+	tester := ui.NewTester(w.view, 900, 600)
+	tester.Frame()
+	for _, name := range []string{"Toggle sidebar", "New workspace", "Agent alerts", "Settings"} {
+		if _, ok := tester.AccessByRole(ui.RoleButton, name); !ok {
+			t.Errorf("%q should be an accessible button", name)
+		}
+	}
+}
+
+func TestTabCloseIsAccessible(t *testing.T) {
+	w := testWindow(t)
+	w.newWorkspace("")
+	tester := ui.NewTester(w.view, 900, 600)
+	tester.Frame()
+	if _, ok := tester.AccessByRole(ui.RoleTab, ""); !ok {
+		t.Error("a tab should be exposed as a tab")
+	}
+	if _, ok := tester.AccessByRole(ui.RoleButton, "Close tab"); !ok {
+		t.Error("the selected tab's close should be an accessible button")
+	}
+}
+
+func TestSettingsControlsAreLabelled(t *testing.T) {
+	settings := config.LoadSettings(t.TempDir() + "/config")
+	a := &App{settings: settings, settingsState: &settingsWindow{}}
+	tester := ui.NewTester(a.settingsView, 560, 560)
+	tester.Frame()
+	if _, ok := tester.AccessByRole(ui.RoleSwitch, "Copy on select"); !ok {
+		t.Error("the copy-on-select switch should be named by its label")
+	}
+	if _, ok := tester.AccessByRole(ui.RolePopUpButton, "Confirm closing terminals"); !ok {
+		t.Error("the confirm-closing select should be named by its label")
+	}
+}
+
+func TestSessionsListRenders(t *testing.T) {
+	w := testWindow(t)
+	w.newWorkspace("")
+	w.history.expanded = true
+	w.history.loaded = true
+	w.history.sessions = []history.Session{
+		{ID: "a", Agent: "claude", Cwd: "/tmp/a", Title: "First session"},
+		{ID: "b", Agent: "codex", Cwd: "/tmp/b", Title: "Second session"},
+	}
+	tester := ui.NewTester(w.view, 900, 600)
+	tester.Frame()
+	if !tester.HasText("First session") || !tester.HasText("Second session") {
+		t.Fatal("the sessions list should show the saved sessions")
 	}
 }
 
