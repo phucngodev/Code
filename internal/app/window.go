@@ -984,13 +984,25 @@ func (w *WindowState) closeFind() {
 // useful part.
 func (w *WindowState) tabLabel(tab *model.Tab[*Surface]) string {
 	s := tab.Focused()
-	if title := cleanTitle(s.LeafTitle()); title != "" {
+	if title := tabTitle(s.LeafTitle()); title != "" {
 		return truncate(title, 24)
 	}
 	if dir := s.LeafDir(); dir != "" {
-		return truncateStart(strings.TrimRight(model.AbbreviateHome(dir), "/"), 28)
+		return truncate(model.FolderName(dir), 24)
 	}
 	return "Terminal"
+}
+
+// tabTitle is a tab's label from a terminal title: a shell prompt's
+// "user@host:path" reads as the path's last segment on this machine and as
+// the host on another, and a title that is a path reads as its last segment.
+// Any other title, as a program sets, is kept.
+func tabTitle(title string) string {
+	title = cleanTitle(title)
+	if strings.HasPrefix(title, "/") || strings.HasPrefix(title, "~") || strings.HasPrefix(title, ".") {
+		return model.FolderName(title)
+	}
+	return title
 }
 
 // cleanTitle reads a shell prompt's "user@host:path" title: on the machine
@@ -1046,14 +1058,4 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return string([]rune(s)[:n-1]) + "…"
-}
-
-// truncateStart keeps the end of a path, where the folder name is, marking
-// what it drops.
-func truncateStart(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	return "…" + string(r[len(r)-(n-1):])
 }

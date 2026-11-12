@@ -369,13 +369,28 @@ func TestCommandPaletteRenders(t *testing.T) {
 	}
 }
 
-func TestTruncatePathKeepsTheTail(t *testing.T) {
-	got := truncateStart("~/Documents/Codes/Code/codego", 20)
-	if len([]rune(got)) != 20 {
-		t.Fatalf("truncateStart length = %d, want 20 (%q)", len([]rune(got)), got)
+func TestTabTitleShowsLastPathSegment(t *testing.T) {
+	local, err := os.Hostname()
+	if err != nil {
+		t.Skipf("no host name: %v", err)
 	}
-	if !strings.HasPrefix(got, "…") || !strings.HasSuffix(got, "codego") {
-		t.Fatalf("truncateStart = %q, want a leading ellipsis and the folder name", got)
+	remote := local + "-remote"
+	cases := []struct{ in, want string }{
+		// A prompt's path shows its last segment, like the workspace name.
+		{"user@" + local + ":~/Projects", "Projects"},
+		{"user@" + local + ":/home/me/Documents/Codes/omarchy/omarchy.md", "omarchy.md"},
+		{"~/Projects", "Projects"},
+		{"/home/me/code", "code"},
+		// A remote prompt keeps the host.
+		{"user@" + remote + ":~/Projects", remote},
+		// A program's own title is kept.
+		{"vim main.go", "vim main.go"},
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := tabTitle(c.in); got != c.want {
+			t.Errorf("tabTitle(%q) = %q, want %q", c.in, got, c.want)
+		}
 	}
 }
 
