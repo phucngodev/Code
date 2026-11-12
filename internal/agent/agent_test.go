@@ -125,3 +125,60 @@ func TestSocketRoundTrip(t *testing.T) {
 		t.Fatal("timed out waiting for the event")
 	}
 }
+
+func TestTurnEndedInViewIsSeen(t *testing.T) {
+	base := time.Now()
+
+	store := NewStore()
+	store.IsVisible = func(id string) bool { return id == "term-1" }
+	apply(t, store, KindSessionStarted, base, "")
+	apply(t, store, KindTurnEnded, base.Add(time.Second), "")
+	if got := store.PendingCount([]string{"term-1"}); got != 0 {
+		t.Fatalf("a turn that ended in view should be seen, pending = %d", got)
+	}
+
+	hidden := NewStore()
+	hidden.IsVisible = func(string) bool { return false }
+	apply(t, hidden, KindSessionStarted, base, "")
+	apply(t, hidden, KindTurnEnded, base.Add(time.Second), "")
+	if got := hidden.PendingCount([]string{"term-1"}); got != 1 {
+		t.Fatalf("a turn that ended out of view should be unread, pending = %d", got)
+	}
+}
+
+func TestEventsForUnknownTerminalsAreDropped(t *testing.T) {
+	store := NewStore()
+	store.IsLive = func(id string) bool { return id == "term-1" }
+	apply(t, store, KindWorking, time.Now(), "Read")
+	if got := store.RunningAgent("term-1"); got == "" {
+		t.Fatal("a live terminal should take its event")
+	}
+	store.Apply(Event{Version: 1, Agent: "claude", Kind: KindWorking, SessionID: "s2", SurfaceID: "gone", At: time.Now()})
+	if got := store.RunningAgent("gone"); got != "" {
+		t.Fatalf("an event for a closed terminal should be dropped, got %q", got)
+	}
+}
+
+func TestMostPendingPrefersWaitingThenRecent(t *testing.T) {
+	store := NewStore()
+	base := time.Now()
+	ev := func(id string, kind Kind, at time.Time) Event {
+		return Event{Version: 1, Agent: "claude", Kind: kind, SessionID: "s-" + id, SurfaceID: id, At: at}
+	}
+	store.Apply(ev("a", KindSessionStarted, base))
+	store.Apply(ev("a", KindTurnEnded, base.Add(time.Second)))
+	store.Apply(ev("b", KindSessionStarted, base))
+	store.Apply(ev("b", KindTurnEnded, base.Add(2*time.Second)))
+	store.Apply(ev("c", KindSessionStarted, base))
+	store.Apply(ev("c", KindNeedsInput, base.Add(3*time.Second)))
+
+	if id, ok := store.MostPending([]string{"a", "b", "c"}); !ok || id != "c" {
+		t.Fatalf("MostPending = %q, %v; want c, the waiting one", id, ok)
+	}
+	if id, ok := store.MostPending([]string{"a", "b"}); !ok || id != "b" {
+		t.Fatalf("MostPending = %q, %v; want b, the most recently finished", id, ok)
+	}
+	if _, ok := store.MostPending([]string{"a", "b", "c", "missing"}); !ok {
+		t.Fatal("MostPending should ignore unknown terminals")
+	}
+}

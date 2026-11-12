@@ -260,7 +260,7 @@ func (w *WindowState) buildTab(c *ui.Context, ws *model.Workspace[*Surface], tab
 func (w *WindowState) buildBell(c *ui.Context) {
 	t := c.Theme()
 	count := w.unreadCount()
-	el := ui.Row(c).Padding(2, 6).Gap(4).Radius(6).AlignItems(ui.Center).Cursor(ui.CursorPointer)
+	el := ui.Row(c).Padding(2, 6).Radius(6).AlignItems(ui.Center).Cursor(ui.CursorPointer)
 	hovered := el.Hovered()
 	color := t.TextMuted
 	if hovered {
@@ -270,10 +270,14 @@ func (w *WindowState) buildBell(c *ui.Context) {
 	el.Description("Jump to the agent that needs you")
 	el.OnClick(func() { w.jumpToLatestUnread() })
 	el.Children(func() {
-		ui.Icon(c, bellIcon).FontSize(titleBarIconSize).TextColor(color)
-		if count > 0 {
-			ui.Text(c, fmt.Sprint(count)).FontSize(11).TextColor(color)
-		}
+		// The count sits on the bell's top right, as a badge, not beside it.
+		ui.Box(c).Size(titleBarIconSize, titleBarIconSize).Children(func() {
+			ui.Icon(c, bellIcon).FontSize(titleBarIconSize).TextColor(color)
+			if count > 0 {
+				ui.Text(c, fmt.Sprint(count)).FontSize(10).Bold().TextColor(t.Danger).
+					Absolute().Top(-4).Right(-2)
+			}
+		})
 	})
 }
 
@@ -902,10 +906,9 @@ func (w *WindowState) unreadCount() int {
 }
 
 func (w *WindowState) jumpToLatestUnread() {
-	for _, s := range w.allSurfaces() {
-		if w.app.agents.PendingCount([]string{s.id}) > 0 {
+	if id, ok := w.app.agents.MostPending(surfaceIDs(w.allSurfaces())); ok {
+		if s := w.surfaceByID(id); s != nil {
 			w.reveal(s)
-			return
 		}
 	}
 }

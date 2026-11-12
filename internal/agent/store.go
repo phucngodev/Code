@@ -343,6 +343,35 @@ func (s *Store) RunningAgent(surface string) string {
 	return session.Agent
 }
 
+// MostPending returns the surface among these that most needs the user: one
+// waiting for input first, then the most recently finished or attention.
+func (s *Store) MostPending(surfaces []string) (string, bool) {
+	best, found := "", false
+	var bestIndicator Indicator
+	var bestSince time.Time
+	for _, id := range surfaces {
+		session, ok := s.sessions[id]
+		if !ok || session.State == StateEnded {
+			continue
+		}
+		if !session.IsUnread() && session.State != StateWaiting {
+			continue
+		}
+		indicator, ok := IndicatorFor(session)
+		if !ok {
+			continue
+		}
+		since := session.IndicatorSince
+		if since.IsZero() {
+			since = session.UpdatedAt
+		}
+		if !found || indicator > bestIndicator || (indicator == bestIndicator && since.After(bestSince)) {
+			best, found, bestIndicator, bestSince = id, true, indicator, since
+		}
+	}
+	return best, found
+}
+
 // Remove drops a terminal's session.
 func (s *Store) Remove(surface string) {
 	session, ok := s.sessions[surface]

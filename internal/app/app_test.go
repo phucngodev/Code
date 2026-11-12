@@ -105,6 +105,18 @@ func TestConfirmDialogCloseRuns(t *testing.T) {
 	}
 }
 
+func TestAgentStoreFollowsTerminalOwners(t *testing.T) {
+	a := &App{agents: agent.NewStore(), surfaceOwners: map[string]*WindowState{}}
+	a.wireAgentStore()
+	if a.agents.IsLive("missing") {
+		t.Fatal("a terminal with no window should not be live")
+	}
+	a.surfaceOwners["s"] = &WindowState{}
+	if !a.agents.IsLive("s") {
+		t.Fatal("a terminal with a window should be live")
+	}
+}
+
 func TestSplitArgumentParsing(t *testing.T) {
 	if got := splitNavigation("left"); got != model.NavLeft {
 		t.Fatalf("splitNavigation(left) = %v", got)

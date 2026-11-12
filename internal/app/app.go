@@ -347,6 +347,9 @@ func (a *App) agentEnv(s *Surface) []string {
 // setUpAgents prepares cde, the shim root and the agent resources, and installs
 // the extensions of the agents that read them from a config folder.
 func (a *App) setUpAgents() {
+	// The store tells whether a terminal is open and whether the user is
+	// looking at it through the window that owns it.
+	a.wireAgentStore()
 	a.cdePath, _ = os.Executable()
 	a.shimsRoot = agent.ShimsRoot(os.Getpid())
 	cacheDir, err := os.UserCacheDir()
@@ -359,6 +362,17 @@ func (a *App) setUpAgents() {
 	}
 	agent.InstallExtensions(a.assetsDir, environMap())
 	agent.RemoveStaleShims(a.shimsRoot, os.Getpid(), func(id string) bool { return a.ownerOf(id) != nil })
+}
+
+// wireAgentStore lets the agent store tell a terminal's window whether the
+// user is looking at it: an event for a closed terminal is dropped, and a turn
+// that ends in view is already seen, so neither raises an unread alert.
+func (a *App) wireAgentStore() {
+	a.agents.IsLive = func(id string) bool { return a.ownerOf(id) != nil }
+	a.agents.IsVisible = func(id string) bool {
+		w := a.ownerOf(id)
+		return w != nil && w.isInView(id)
+	}
 }
 
 // removeShims drops a closed terminal's shim directory.
