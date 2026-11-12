@@ -111,6 +111,54 @@ func TestRunningFollowsForegroundProcess(t *testing.T) {
 	}
 }
 
+// TestProcessDirFollowsCd checks that the shell's working directory is read
+// from the OS, since a shell may report it only once.
+func TestProcessDirFollowsCd(t *testing.T) {
+	_, s := liveShellWindow(t)
+	defer s.close()
+	shell := shellOf(t, s)
+
+	if !waitUntil(func() bool { dir, ok := processDir(shell); return ok && dir != "" }, 5*time.Second) {
+		t.Fatal("the shell's working directory was not read")
+	}
+	if !waitUntil(func() bool { return strings.TrimSpace(s.term.Text()) != "" }, 5*time.Second) {
+		t.Fatal("the shell produced no prompt")
+	}
+	// /tmp is a symlink to /private/tmp on macOS, which the process's own
+	// directory resolves.
+	s.term.Send([]byte("cd /private/tmp\n"))
+	if !waitUntil(func() bool { dir, _ := processDir(shell); return dir == "/private/tmp" }, 5*time.Second) {
+		t.Fatal("the shell's working directory did not follow cd")
+	}
+}
+
+// TestForegroundCommandArgs checks that the running command's arguments are
+// read from the OS, which is how an ssh's host is found.
+func TestForegroundCommandArgs(t *testing.T) {
+	_, s := liveShellWindow(t)
+	defer s.close()
+	shell := shellOf(t, s)
+
+	if !waitUntil(func() bool { return strings.TrimSpace(s.term.Text()) != "" }, 5*time.Second) {
+		t.Fatal("the shell produced no prompt")
+	}
+	s.term.Send([]byte("sleep 30\n"))
+	if !waitUntil(func() bool {
+		pid := foregroundPID(shell)
+		if pid <= 0 {
+			return false
+		}
+		for _, arg := range processArgs(pid) {
+			if arg == "sleep" {
+				return true
+			}
+		}
+		return false
+	}, 5*time.Second) {
+		t.Fatal("the foreground command's arguments were not read")
+	}
+}
+
 // TestConfirmCloseAsksForARunningCommand checks the confirm predicate itself:
 // an idle shell does not ask, a command does.
 func TestConfirmCloseAsksForARunningCommand(t *testing.T) {

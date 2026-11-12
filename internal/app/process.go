@@ -2,6 +2,8 @@ package app
 
 import (
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -87,6 +89,62 @@ func (a *App) assignShells() {
 	a.shellMu.Lock()
 	a.shellWatching = false
 	a.shellMu.Unlock()
+}
+
+// sshRemote returns the host an ssh running in the terminal's shell connects
+// to, or empty when none runs.
+func sshRemote(shellPID int) string {
+	pid := foregroundPID(shellPID)
+	if pid <= 0 {
+		return ""
+	}
+	args := processArgs(pid)
+	if len(args) < 2 || filepath.Base(args[0]) != "ssh" {
+		return ""
+	}
+	return sshDestination(args[1:])
+}
+
+// sshValueOptions are ssh options that take the value after them, so the
+// destination is not mistaken for one.
+var sshValueOptions = map[string]bool{
+	"-b": true, "-c": true, "-D": true, "-E": true, "-e": true, "-F": true,
+	"-I": true, "-i": true, "-J": true, "-L": true, "-l": true, "-m": true,
+	"-O": true, "-o": true, "-p": true, "-Q": true, "-R": true, "-S": true,
+	"-W": true, "-w": true,
+}
+
+// sshDestination reads the host ssh connects to, [user@]host, from its
+// arguments, skipping options and their values.
+func sshDestination(args []string) string {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			if i+1 < len(args) {
+				return sshHost(args[i+1])
+			}
+			return ""
+		}
+		if strings.HasPrefix(arg, "-") && len(arg) > 1 {
+			if sshValueOptions[arg] {
+				i++
+			}
+			continue
+		}
+		return sshHost(arg)
+	}
+	return ""
+}
+
+// sshHost reads the host from a destination, dropping a user and a port.
+func sshHost(arg string) string {
+	if at := strings.LastIndexByte(arg, '@'); at >= 0 {
+		arg = arg[at+1:]
+	}
+	if colon := strings.LastIndexByte(arg, ':'); colon >= 0 {
+		arg = arg[:colon]
+	}
+	return arg
 }
 
 // foregroundGroupRunning reports whether a terminal with process group pgrp

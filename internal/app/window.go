@@ -979,48 +979,51 @@ func (w *WindowState) closeFind() {
 	w.markChanged()
 }
 
-// tabLabel is a tab's title: the terminal's own title when it sets one,
-// otherwise its working directory, truncated from whichever end keeps the
-// useful part.
+// tabLabel is a tab's title: a program's title when it sets one, else the
+// working directory. A title that is a path is the shell telling where it is,
+// which it may do only once, so the directory Code reports is preferred: it
+// follows a change of folder, while the title may not.
 func (w *WindowState) tabLabel(tab *model.Tab[*Surface]) string {
 	s := tab.Focused()
-	if title := tabTitle(s.LeafTitle()); title != "" {
+	if s.remote != "" {
+		return truncate(s.remote, 24)
+	}
+	title := cleanTitle(s.LeafTitle())
+	if title != "" && !pathTitle(title) {
 		return truncate(title, 24)
 	}
 	if dir := s.LeafDir(); dir != "" {
 		return truncate(model.FolderName(dir), 24)
 	}
+	if title != "" {
+		return truncate(model.FolderName(title), 24)
+	}
 	return "Terminal"
 }
 
-// tabTitle is a tab's label from a terminal title: a shell prompt's
-// "user@host:path" reads as the path's last segment on this machine and as
-// the host on another, and a title that is a path reads as its last segment.
-// Any other title, as a program sets, is kept.
-func tabTitle(title string) string {
-	title = cleanTitle(title)
-	if strings.HasPrefix(title, "/") || strings.HasPrefix(title, "~") || strings.HasPrefix(title, ".") {
-		return model.FolderName(title)
-	}
-	return title
+// pathTitle reports whether a title is a path, as a shell's title of its
+// working directory is.
+func pathTitle(title string) bool {
+	return strings.HasPrefix(title, "/") || strings.HasPrefix(title, "~") || strings.HasPrefix(title, ".")
 }
 
-// cleanTitle reads a shell prompt's "user@host:path" title: on the machine
+// cleanTitle reads a shell prompt's "[user@]host:path" title: on the machine
 // Code runs on it reads as the path, so a tab shows where the terminal is; on
 // another machine, reached by ssh, it reads as that host, so a tab shows which
 // machine it is on. A title a program sets without that shape is kept.
 func cleanTitle(title string) string {
-	at := strings.IndexByte(title, '@')
-	if at <= 0 {
-		return title
-	}
 	colon := strings.IndexByte(title, ':')
-	if colon <= at {
+	if colon <= 0 {
 		return title
 	}
-	host := title[at+1 : colon]
+	host := title[:colon]
+	if at := strings.LastIndexByte(host, '@'); at >= 0 {
+		host = host[at+1:]
+	}
 	path := strings.TrimSpace(title[colon+1:])
-	if host == "" || path == "" {
+	// Only "host:path", with a path, reads as a shell's; a program's
+	// "file:line" or a time is kept.
+	if host == "" || strings.ContainsAny(host, " /@") || !pathTitle(path) {
 		return title
 	}
 	if localHost(host) {

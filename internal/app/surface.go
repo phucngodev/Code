@@ -18,7 +18,10 @@ type Surface struct {
 	workspaceID string
 	title       string
 	dir         string
-	owner       *WindowState
+	// remote is the host an ssh in the terminal connects to, shown as the tab
+	// title in its place.
+	remote string
+	owner  *WindowState
 	// command runs in place of the shell, for a session Code reopens.
 	command string
 

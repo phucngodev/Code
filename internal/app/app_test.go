@@ -369,27 +369,37 @@ func TestCommandPaletteRenders(t *testing.T) {
 	}
 }
 
-func TestTabTitleShowsLastPathSegment(t *testing.T) {
+func TestTabLabelPrefersTheReportedDirectory(t *testing.T) {
 	local, err := os.Hostname()
 	if err != nil {
 		t.Skipf("no host name: %v", err)
 	}
-	remote := local + "-remote"
-	cases := []struct{ in, want string }{
-		// A prompt's path shows its last segment, like the workspace name.
-		{"user@" + local + ":~/Projects", "Projects"},
-		{"user@" + local + ":/home/me/Documents/Codes/omarchy/omarchy.md", "omarchy.md"},
-		{"~/Projects", "Projects"},
-		{"/home/me/code", "code"},
-		// A remote prompt keeps the host.
-		{"user@" + remote + ":~/Projects", remote},
+	remote := "remote-host"
+	cases := []struct {
+		title, dir, remote, want string
+	}{
+		// A shell's path-like title is its directory: the tab follows the
+		// directory Code reports, which is fresh after a cd.
+		{"~/Projects", "/Users/me/Projects", "", "Projects"},
+		{"user@" + local + ":~/Projects", "/Users/me/Projects", "", "Projects"},
+		{"~/Old", "/Users/me/New", "", "New"},
+		// A remote prompt keeps the host, with or without the user.
+		{"user@" + remote + ":~/Projects", "/Users/me/Projects", "", remote},
+		{remote + ":~/Projects", "/Users/me/Projects", "", remote},
+		// An ssh in the terminal names the host, whatever the title says.
+		{"~/Projects", "/Users/me/Projects", remote, remote},
 		// A program's own title is kept.
-		{"vim main.go", "vim main.go"},
-		{"", ""},
+		{"vim main.go", "/Users/me/Projects", "", "vim main.go"},
+		{"main.go:12", "/Users/me/Projects", "", "main.go:12"},
+		// Without a title, the directory's last segment shows.
+		{"", "/home/me/code", "", "code"},
+		{"", "", "", "Terminal"},
 	}
 	for _, c := range cases {
-		if got := tabTitle(c.in); got != c.want {
-			t.Errorf("tabTitle(%q) = %q, want %q", c.in, got, c.want)
+		s := &Surface{id: "a", title: c.title, dir: c.dir, remote: c.remote}
+		tab := model.NewTab("t", s)
+		if got := (&WindowState{}).tabLabel(tab); got != c.want {
+			t.Errorf("tabLabel(title=%q dir=%q remote=%q) = %q, want %q", c.title, c.dir, c.remote, got, c.want)
 		}
 	}
 }

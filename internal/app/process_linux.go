@@ -34,6 +34,46 @@ func childPIDs(pid int) []int {
 	return out
 }
 
+// processDir returns the working directory of a process, or false when it
+// cannot be read.
+func processDir(pid int) (string, bool) {
+	path, err := os.Readlink(fmt.Sprintf("/proc/%d/cwd", pid))
+	if err != nil {
+		return "", false
+	}
+	return path, true
+}
+
+// foregroundPID returns the PID of the process group the terminal whose shell
+// has this PID holds in the foreground when it is a command rather than the
+// shell's own group, or 0.
+func foregroundPID(shellPID int) int {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", shellPID))
+	if err != nil {
+		return 0
+	}
+	pgrp, tpgid, ok := statProcessGroups(string(data))
+	if !ok || tpgid <= 0 || tpgid == pgrp {
+		return 0
+	}
+	return tpgid
+}
+
+// processArgs returns the argument list of a process, or nil.
+func processArgs(pid int) []string {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
+	if err != nil {
+		return nil
+	}
+	var args []string
+	for _, arg := range strings.Split(string(data), "\x00") {
+		if arg != "" {
+			args = append(args, arg)
+		}
+	}
+	return args
+}
+
 // commandRunning reports whether a command is running in the terminal whose
 // shell has this PID, from the process group and the terminal's foreground
 // process group in /proc/<pid>/stat. It reports true when the process cannot

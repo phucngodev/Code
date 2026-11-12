@@ -1,0 +1,2 @@
+#!/bin/sh
+CODE_SHIM_DIR='af809992-15f8-4c33-a533-d94e6ea491e5' exec '' launch opencode "$@"

@@ -483,12 +483,12 @@ func (a *App) snapshot() *model.Session {
 }
 
 // startDirWatcher follows the working directory shells report with OSC 7 and
-// the config file, once a second, instead of reading them every frame.
+// the config file, every half second, instead of reading them every frame.
 func (a *App) startDirWatcher() {
 	a.dirStop = make(chan struct{})
 	stop := a.dirStop
 	go func() {
-		ticker := time.NewTicker(time.Second)
+		ticker := time.NewTicker(500 * time.Millisecond)
 		defer ticker.Stop()
 		for {
 			select {
@@ -534,7 +534,19 @@ func (a *App) refreshDirs() {
 			if s.closed || s.term == nil {
 				continue
 			}
-			if dir := s.term.Dir(); dir != "" && dir != s.dir {
+			// The shell's own working directory is the truth, since its
+			// title and OSC 7 reports may come only once.
+			dir := s.term.Dir()
+			if pid, ok := s.shellPID(); ok {
+				if d, ok := processDir(pid); ok {
+					dir = d
+				}
+				if host := sshRemote(pid); host != s.remote {
+					s.remote = host
+					changed = true
+				}
+			}
+			if dir != "" && dir != s.dir {
 				s.dir = dir
 				changed = true
 			}
