@@ -51,7 +51,9 @@ go tool mygo build       # package for this machine under build/<os>-<arch>/
 ```
 
 The MyGo module is pinned in `go.mod`; `mygo.json` names the app **Code**
-(identifier `dev.phucngo.code`).
+(identifier `dev.phucngo.code`). To build and install a packaged app for a
+platform, use `scripts/build-release.sh <platform>`; on Linux its
+`build/<os>-<arch>/install.sh` installs it for the current user (see below).
 
 ## The libghostty version
 
@@ -135,6 +137,12 @@ internal/app            the application, windows, views, menus and dialogs
 
 The model and config packages know nothing about terminals or widgets, so
 they are unit-tested without a window. The views are tested with `ui.NewTester`.
+
+## MyGo docs
+
+MyGo's documentation is checked in under `mygo-docs/`: `ui/` for the native UI
+components (indexed by `ui/README.md`), `plugins/terminal.md` for the terminal,
+and the top-level guides for menus, windows and architecture.
 
 ## Where Code keeps its files
 

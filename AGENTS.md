@@ -14,6 +14,19 @@
 
 4. every keyboard shortcut Code adds must be listed in the Keyboard Shortcuts window (the list is `shortcutList` in `internal/app/shortcuts.go`), so add the new shortcut there whenever you add, change or remove one, named for what it does and in the section it belongs to. Open the window to check it, and add the shortcut to the site's keyboard shortcuts page at the next release.
 
+# mygo docs
+
+MyGo's documentation is checked in under `mygo-docs/`. Read it before working
+on the UI, menus, windows or the terminal, rather than the pinned module in the
+Go module cache.
+
+- `mygo-docs/ui/` — the native UI components, indexed by `ui/README.md`
+  (`split.md`, `layout.md`, `list.md`, `sidebar.md`, `alert-dialog.md`,
+  `overlays.md`, `scroll.md`, `styling.md`, `testing.md`, ...).
+- `mygo-docs/plugins/terminal.md` — the terminal plugin Code draws with.
+- the top level — `menus.md`, `windows.md`, `app.md`, `architecture.md`,
+  `bindings.md`, `native.md`, `distribution.md`.
+
 # Build
 
 This is a Go app. Build and test it with:
@@ -23,7 +36,21 @@ go build ./...
 go test ./...
 ```
 
-Run the development app with `go run .` or `go tool mygo dev`. Package a release for a platform with `go tool mygo build` (or `scripts/package.sh`, which also strips MyGo's unused libghostty-vt and signs). It needs the libghostty-vt build for the target first: `scripts/build-libghostty.sh` (see the README).
+Run the development app with `go run .` or `go tool mygo dev`.
+
+Build and install for a platform with `scripts/build-release.sh <platform>`,
+which builds that target's libghostty-vt first if it is missing, then packages
+`build/<os>-<arch>/`. The Linux `install.sh` there installs Code for the
+current user (no root):
+
+```sh
+scripts/build-release.sh linux/amd64
+./build/linux-amd64/install.sh
+```
+
+On macOS the bundle is `build/darwin-<arch>/Code.app`; `scripts/package.sh`
+builds without a disk image, strips MyGo's unused libghostty-vt and re-signs.
+See the README for the libghostty-vt step itself.
 
 # releases
 
