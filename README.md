@@ -99,6 +99,11 @@ scripts/build-libghostty.sh all
 scripts/package.sh -platform darwin/universal
 ```
 
+The app's version comes from `mygo.json`, which `scripts/build-release.sh`
+stamps from the git tag (or `VERSION`) before building and restores after. For
+a single platform run `scripts/stamp-version.sh` first, so the bundle and the
+About window carry the tag.
+
 ## Build every platform
 
 Each platform and architecture gets its own app, carrying only its own
@@ -109,6 +114,11 @@ builds and packages them:
 scripts/build-release.sh                       # all four
 scripts/build-release.sh darwin/arm64          # or darwin/amd64, linux/amd64, linux/arm64
 ```
+
+The version the app reports (About window, `CFBundleShortVersionString`, disk
+image and package names) comes from `mygo.json`. `build-release.sh` stamps it
+from the git tag — `GITHUB_REF_NAME` in CI, else `git describe` — and restores
+`mygo.json` when it finishes.
 
 macOS apps are signed and turned into disk images; Linux apps are the
 executable with its `.deb` and `.tar.gz`. On Linux the shared library is

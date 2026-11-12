@@ -22,6 +22,13 @@ fi
 
 ref="$(tr -d '[:space:]' < ghostty.version)"
 
+# The app, its packages and the About window carry the release version, which
+# comes from the git tag (or VERSION). A local run restores mygo.json on exit.
+version_backup="$(mktemp)"
+cp mygo.json "$version_backup"
+trap 'mv -f "$version_backup" mygo.json' EXIT
+./scripts/stamp-version.sh
+
 for target in "${targets[@]}"; do
   os="${target%/*}"
   arch="${target#*/}"
