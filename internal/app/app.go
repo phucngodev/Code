@@ -370,15 +370,29 @@ func (a *App) applyConfig() {
 	}
 }
 
-// agentEnv is the variables a shell inherits so the agent hooks can find Code.
+// GhosttyVersion is the Ghostty revision Code's libghostty-vt comes from,
+// set by main from ghostty.version. It is advertised as TERM_PROGRAM_VERSION
+// beside TERM_PROGRAM, so a program that recognizes Ghostty turns on images,
+// true color and hyperlinks. The terminal emulator is Ghostty's, so
+// TERM_PROGRAM names it.
+var GhosttyVersion string
+
+// agentEnv is the variables a shell inherits so the agent hooks can find Code,
+// and so programs can tell which terminal emulator they run in. Pi and PiG,
+// for instance, show an image inline only when they recognize the terminal
+// from TERM_PROGRAM, KITTY_WINDOW_ID or GHOSTTY_* rather than by querying it.
 func (a *App) agentEnv(s *Surface) []string {
 	env := []string{
+		"TERM_PROGRAM=ghostty",
 		agent.EnvSurfaceID + "=" + s.id,
 		agent.EnvWorkspaceID + "=" + s.workspaceID,
 		agent.EnvSocket + "=" + a.socketPath,
 		agent.EnvCde + "=" + a.cdePath,
 		agent.EnvShims + "=" + a.shimsRoot,
 		agent.EnvAgentsDir + "=" + a.assetsDir,
+	}
+	if v := strings.TrimSpace(GhosttyVersion); v != "" {
+		env = append(env, "TERM_PROGRAM_VERSION="+v)
 	}
 	// Without a helper binary and a root, installing shims would land in the
 	// working directory. Leaving PATH alone is safer than pointing at a shim

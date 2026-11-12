@@ -41,6 +41,10 @@ func main() {
 		log.Printf("codeterm: using %s (Ghostty %s)", loaded, strings.TrimSpace(pinnedGhosttyVersion))
 	}
 
+	// Programs that recognize Ghostty turn on images and true color from
+	// TERM_PROGRAM, so the terminals advertise the Ghostty revision Code uses.
+	app.GhosttyVersion = strings.TrimSpace(pinnedGhosttyVersion)
+
 	a := app.New()
 	mygo.App.OnSecondInstance(func([]string, string) { a.BringToFront() })
 	if err := mygo.App.Run(); err != nil {

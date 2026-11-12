@@ -105,6 +105,25 @@ func TestAgentEnvWithoutHelperLeavesPathAlone(t *testing.T) {
 	}
 }
 
+func TestAgentEnvAdvertisesTheTerminal(t *testing.T) {
+	a := testApp(t)
+	w := &WindowState{app: a, store: model.NewStore[*Surface]()}
+	s := w.newSurface("pane-1", "", "ws")
+	GhosttyVersion = "1.4.0"
+	defer func() { GhosttyVersion = "" }()
+	got := map[string]bool{}
+	for _, entry := range a.agentEnv(s) {
+		got[entry] = true
+	}
+	// Programs like Pi and PiG key image support on TERM_PROGRAM, not a query.
+	if !got["TERM_PROGRAM=ghostty"] {
+		t.Fatal("the terminal should advertise TERM_PROGRAM=ghostty")
+	}
+	if !got["TERM_PROGRAM_VERSION=1.4.0"] {
+		t.Fatal("the terminal should advertise its Ghostty revision")
+	}
+}
+
 func TestMatchShellsDropsClosedSurfaces(t *testing.T) {
 	live := &Surface{id: "live", dir: "/somewhere"}
 	closed := &Surface{id: "closed", dir: "/somewhere", closed: true}
