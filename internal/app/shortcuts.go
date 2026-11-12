@@ -48,7 +48,7 @@ var acc = struct {
 	reloadConfig:    "Shift+CmdOrCtrl+,",
 	newWindow:       "Shift+CmdOrCtrl+N",
 	newTab:          "CmdOrCtrl+T",
-	closePane:       "CmdOrCtrl+W",
+	closePane:       paneCloseKey(runtime.GOOS),
 	closeTab:        "Alt+CmdOrCtrl+W",
 	closeWindow:     "Shift+CmdOrCtrl+W",
 	splitRight:      "CmdOrCtrl+D",
@@ -73,6 +73,16 @@ var acc = struct {
 	tileRight:       "Ctrl+Shift+Right",
 	tileTop:         "Ctrl+Shift+Up",
 	tileBottom:      "Ctrl+Shift+Down",
+}
+
+// paneCloseKey closes the focused pane. macOS keeps Command+W, the system's
+// close gesture; elsewhere Alt+W, because vim and other programs read
+// Control+W for their own window commands.
+func paneCloseKey(goos string) string {
+	if goos == "darwin" {
+		return "Cmd+W"
+	}
+	return "Alt+W"
 }
 
 // workspaceAccelerator and tabAccelerator are shared by the Workspace menu and

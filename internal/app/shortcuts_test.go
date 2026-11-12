@@ -70,6 +70,21 @@ func TestShortcutKeysArePlatformAware(t *testing.T) {
 	}
 }
 
+// TestPaneCloseKeyKeepsControlWFreeOnLinux checks the close-pane default does
+// not collide with the Control+W a program such as vim reads itself.
+func TestPaneCloseKeyKeepsControlWFreeOnLinux(t *testing.T) {
+	cases := map[string]string{
+		"darwin":  "Cmd+W",
+		"linux":   "Alt+W",
+		"windows": "Alt+W",
+	}
+	for goos, want := range cases {
+		if got := paneCloseKey(goos); got != want {
+			t.Errorf("paneCloseKey(%q) = %q, want %q", goos, got, want)
+		}
+	}
+}
+
 func TestShortcutListNamesEveryAppShortcut(t *testing.T) {
 	titles := map[string]bool{}
 	for _, section := range shortcutList {
