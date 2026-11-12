@@ -51,6 +51,20 @@ type WindowState struct {
 
 	palette paletteState
 	find    findState
+	// pending is a close waiting for the user to confirm, and pendingOpen
+	// mirrors whether its alert is showing. closing is set once the window's
+	// own close was confirmed, so running it does not ask again.
+	pending     *pendingClose
+	pendingOpen bool
+	closing     bool
+}
+
+// pendingClose is a close that waits for the user's answer: what the alert
+// says, and what runs when they confirm.
+type pendingClose struct {
+	title   string
+	message string
+	close   func()
 }
 
 type paletteState struct {
@@ -111,6 +125,22 @@ func (w *WindowState) view(c *ui.Context) {
 	}
 	if w.find.open {
 		w.buildFindBar(c)
+	}
+	if w.pending != nil {
+		w.buildConfirm(c)
+	}
+}
+
+// buildConfirm shows the alert of a close waiting for the user's answer.
+func (w *WindowState) buildConfirm(c *ui.Context) {
+	w.pendingOpen = true
+	switch ui.AlertDialog(c, &w.pendingOpen, w.pending.title, w.pending.message, "Cancel", "Close") {
+	case ui.AlertDismissed, 0:
+		w.pending = nil
+	case 1:
+		pending := w.pending
+		w.pending = nil
+		pending.close()
 	}
 }
 
@@ -666,7 +696,17 @@ func (w *WindowState) surfaceExited(s *Surface) {
 	w.closeSurface(s)
 }
 
+// closeSurface closes a pane, asking first when its program is still running
+// and the setting wants a confirmation.
 func (w *WindowState) closeSurface(s *Surface) {
+	if w.confirmClose([]*Surface{s}) {
+		w.askClose("Close this terminal?", "A process is still running in it.", func() { w.closeSurfaceNow(s) })
+		return
+	}
+	w.closeSurfaceNow(s)
+}
+
+func (w *WindowState) closeSurfaceNow(s *Surface) {
 	_, tab, ok := w.store.WorkspaceContaining(s)
 	if !ok {
 		return
@@ -677,11 +717,21 @@ func (w *WindowState) closeSurface(s *Surface) {
 		w.store.Notify()
 		w.focusSelected()
 	} else {
-		w.closeTab(tab)
+		w.closeTabNow(tab)
 	}
 }
 
+// closeTab closes a tab, asking first when any of its panes runs a program
+// and the setting wants a confirmation.
 func (w *WindowState) closeTab(tab *model.Tab[*Surface]) {
+	if w.confirmClose(tab.Panes.Leaves()) {
+		w.askClose("Close this tab?", "A process is still running in it.", func() { w.closeTabNow(tab) })
+		return
+	}
+	w.closeTabNow(tab)
+}
+
+func (w *WindowState) closeTabNow(tab *model.Tab[*Surface]) {
 	ws, tab2, ok := w.store.WorkspaceContaining(tab.Focused())
 	if !ok || tab2 != tab {
 		return
@@ -699,7 +749,17 @@ func (w *WindowState) closeTab(tab *model.Tab[*Surface]) {
 	w.focusSelected()
 }
 
+// closeWorkspace closes a workspace, asking first when any of its panes runs a
+// program and the setting wants a confirmation.
 func (w *WindowState) closeWorkspace(ws *model.Workspace[*Surface]) {
+	if w.confirmClose(workspaceSurfaces(ws)) {
+		w.askClose("Close this workspace?", "A process is still running in it.", func() { w.closeWorkspaceNow(ws) })
+		return
+	}
+	w.closeWorkspaceNow(ws)
+}
+
+func (w *WindowState) closeWorkspaceNow(ws *model.Workspace[*Surface]) {
 	// Close the terminals before dropping the workspace, so their shells are
 	// hung up and their sessions and shims released.
 	for _, s := range workspaceSurfaces(ws) {
@@ -708,11 +768,39 @@ func (w *WindowState) closeWorkspace(ws *model.Workspace[*Surface]) {
 	w.store.Remove(ws)
 	if len(w.store.Workspaces) == 0 {
 		if w.win != nil {
+			// The window's own close was just answered by closing its last
+			// workspace, so it does not ask again.
+			w.closing = true
 			w.win.Close()
 		}
 		return
 	}
 	w.focusSelected()
+}
+
+// confirmClose reports whether closing these panes needs the user's answer
+// under confirm-close-surface: never, only with a running process (the
+// default), or always.
+func (w *WindowState) confirmClose(surfaces []*Surface) bool {
+	switch w.app.settings.String(config.KeyConfirmClose, "true") {
+	case "false", "never":
+		return false
+	case "always":
+		return len(surfaces) > 0
+	default:
+		for _, s := range surfaces {
+			if s.running() {
+				return true
+			}
+		}
+		return false
+	}
+}
+
+// askClose holds a close for the user's answer, showing its alert next frame.
+func (w *WindowState) askClose(title, message string, close func()) {
+	w.pending = &pendingClose{title: title, message: message, close: close}
+	w.markChanged()
 }
 
 func (w *WindowState) cycleWorkspace(offset int) {

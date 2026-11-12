@@ -42,6 +42,20 @@ func (s *Surface) LeafTitle() string { return s.title }
 // LeafDir is the terminal's working directory, or empty.
 func (s *Surface) LeafDir() string { return s.dir }
 
+// running reports whether the surface's program is still running, as one whose
+// terminal has not reported it ended.
+func (s *Surface) running() bool {
+	if s.term == nil || s.closed {
+		return false
+	}
+	select {
+	case <-s.term.Done():
+		return false
+	default:
+		return true
+	}
+}
+
 // setDir records the directory the shell reported, keeping the last one when a
 // report is empty, as a shell that has not reported one yet must not clear
 // where Code started the pane.

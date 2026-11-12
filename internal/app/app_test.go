@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
@@ -12,6 +13,97 @@ import (
 	"github.com/phucngodev/code/internal/config"
 	"github.com/phucngodev/code/internal/model"
 )
+
+func TestConfirmCloseFollowsSetting(t *testing.T) {
+	w := testWindow(t)
+	idle := w.newSurface("idle", "", "ws")
+	cases := []struct {
+		setting string
+		want    bool
+	}{
+		{"false", false},
+		{"never", false},
+		{"always", true},
+		{"true", false}, // no program running
+	}
+	for _, tc := range cases {
+		w.app.settings.Set(config.KeyConfirmClose, tc.setting)
+		if got := w.confirmClose([]*Surface{idle}); got != tc.want {
+			t.Fatalf("confirmClose with %q = %v, want %v", tc.setting, got, tc.want)
+		}
+	}
+}
+
+func TestSurfaceRunning(t *testing.T) {
+	if err := terminal.Load(); err != nil {
+		t.Skipf("libghostty not available: %v", err)
+	}
+	held, err := terminal.New(terminal.Options{Command: []string{"/bin/sleep", "10"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Close()
+	if s := (&Surface{id: "held", term: held}); !s.running() {
+		t.Fatal("a program still running should read as running")
+	}
+
+	exited, err := terminal.New(terminal.Options{Command: []string{"/bin/true"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer exited.Close()
+	s := &Surface{id: "exited", term: exited}
+	select {
+	case <-exited.Done():
+		if s.running() {
+			t.Fatal("a program that ended should not read as running")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the program did not exit")
+	}
+}
+
+func TestConfirmDialogShowsAndCancels(t *testing.T) {
+	w := testWindow(t)
+	w.newWorkspace("")
+	ran := false
+	w.askClose("Close this terminal?", "A process is still running in it.", func() { ran = true })
+
+	tester := ui.NewTester(w.view, 900, 600)
+	tester.Frame()
+	if !tester.HasText("Close this terminal?") || !tester.HasText("Close") || !tester.HasText("Cancel") {
+		t.Fatal("the close confirmation should show its title and buttons")
+	}
+
+	tester.Key(0, ui.KeyEscape)
+	tester.Frame()
+	if w.pending != nil {
+		t.Fatal("Escape should cancel the close")
+	}
+	if ran {
+		t.Fatal("canceling should not run the close")
+	}
+}
+
+func TestConfirmDialogCloseRuns(t *testing.T) {
+	w := testWindow(t)
+	w.newWorkspace("")
+	ran := false
+	w.askClose("Close this terminal?", "A process is still running in it.", func() { ran = true })
+
+	tester := ui.NewTester(w.view, 900, 600)
+	tester.Frame()
+	if err := tester.Click("Close"); err != nil {
+		t.Fatal(err)
+	}
+	tester.Frame()
+	if !ran {
+		t.Fatal("confirming should run the close")
+	}
+	if w.pending != nil {
+		t.Fatal("the alert should close after confirming")
+	}
+}
 
 func TestSplitArgumentParsing(t *testing.T) {
 	if got := splitNavigation("left"); got != model.NavLeft {

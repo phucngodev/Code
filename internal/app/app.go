@@ -213,6 +213,18 @@ func (a *App) newWindow(frame *model.WindowSession) *WindowState {
 	a.windows = append(a.windows, w)
 	a.byWindow[win] = w
 	win.OnClosed(func() { a.windowClosed(w) })
+	// Closing a window whose terminals still run asks first, unless the user
+	// already answered by closing its last workspace.
+	win.OnClose(func(e *mygo.CloseEvent) {
+		if w.closing || !w.confirmClose(w.allSurfaces()) {
+			return
+		}
+		e.PreventDefault()
+		w.askClose("Close this window?", "A process is still running in it.", func() {
+			w.closing = true
+			w.win.Close()
+		})
+	})
 
 	if frame != nil {
 		store.Restore(*frame, newID, func(id, dir, workspace string) *Surface {

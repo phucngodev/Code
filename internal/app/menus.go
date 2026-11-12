@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"runtime"
 
 	"github.com/egoist/mygo"
 
@@ -77,7 +78,20 @@ func (a *App) buildMenu() *mygo.Menu {
 		item("Split Down", "Shift+CmdOrCtrl+D", func(w *WindowState) { w.splitFocused(model.DirDown) }),
 	}
 
+	// Copy, paste and select all act on the focused terminal. Their keys are
+	// the terminal's own: Command on macOS, Control+Shift elsewhere, so that
+	// Control+C stays the shell's interrupt.
+	editKey := func(key string) string {
+		if runtime.GOOS == "darwin" {
+			return "Cmd+" + key
+		}
+		return "Shift+CmdOrCtrl+" + key
+	}
 	editMenu := []*mygo.MenuItem{
+		{Role: mygo.RoleCopy, Accelerator: editKey("C")},
+		{Role: mygo.RolePaste, Accelerator: editKey("V")},
+		{Role: mygo.RoleSelectAll, Accelerator: editKey("A")},
+		mygo.Separator(),
 		item("Find…", "CmdOrCtrl+F", func(w *WindowState) { w.openFind() }),
 		item("Find Next", "CmdOrCtrl+G", func(w *WindowState) { w.searchNext() }),
 		item("Find Previous", "Shift+CmdOrCtrl+G", func(w *WindowState) { w.searchPrevious() }),

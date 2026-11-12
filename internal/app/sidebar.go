@@ -31,7 +31,9 @@ func (w *WindowState) buildSidebar(c *ui.Context) {
 			ui.Column(c).Fill().Background(t.Background).Padding(10).Gap(8).Children(func() {
 				ui.Text(c, "Agents").FontSize(11).Bold().TextColor(t.TextMuted).Padding(2, 2, 0, 2)
 				w.buildAgentList(c)
-				ui.Divider(c)
+				// The divider runs the full width, as the one above the agents,
+				// not inset by the column's padding.
+				ui.Divider(c).MarginX(-10)
 				w.buildSessions(c)
 			})
 		}).Fill().SplitReset(320)

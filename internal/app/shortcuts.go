@@ -60,6 +60,9 @@ var shortcutList = []shortcutSection{
 		{"Tile bottom half", []string{"⌃", "⌘", "↓"}},
 	}},
 	{"Terminal", []shortcut{
+		{"Copy", []string{"⌘", "C"}},
+		{"Paste", []string{"⌘", "V"}},
+		{"Select all", []string{"⌘", "A"}},
 		{"Find", []string{"⌘", "F"}},
 		{"Find next", []string{"⌘", "G"}},
 		{"Find previous", []string{"⇧", "⌘", "G"}},
