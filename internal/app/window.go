@@ -223,9 +223,10 @@ func (w *WindowState) buildTab(c *ui.Context, ws *model.Workspace[*Surface], tab
 		// bottom of the title bar, so it meets the terminal below it.
 		row = row.Height(height).AlignSelf(ui.End).Radius(7, 7, 0, 0).Background(t.Background)
 	case hovered:
-		row = row.Height(30).Radius(6).Background(t.SurfaceHover)
+		// A hovered tab fills its cell squarely, with no inset.
+		row = row.Height(height).AlignSelf(ui.End).Background(t.SurfaceHover)
 	default:
-		row = row.Height(30).Radius(6)
+		row = row.Height(height).AlignSelf(ui.End)
 	}
 	textColor := t.TextMuted
 	if selected {
