@@ -248,18 +248,26 @@ func TestTerminalKeybindMapping(t *testing.T) {
 	}
 }
 
-func TestWindowBindingOverridesDefault(t *testing.T) {
+func TestWindowBindingLeavesOptionBindingsToTheTerminal(t *testing.T) {
 	a := testApp(t)
 	a.keybinds = []config.Keybind{{Mods: ui.Cmd | ui.Alt, Key: ui.KeyLeft, Action: "new_tab"}}
 	w := &WindowState{app: a, store: model.NewStore[*Surface]()}
-	count := 0
 	for _, b := range w.windowBindings() {
 		if b.mods == ui.Cmd|ui.Alt && b.key == ui.KeyLeft {
-			count++
+			t.Fatal("an Option binding must not be a window shortcut, or the terminal never sees it")
 		}
 	}
-	if count != 1 {
-		t.Fatalf("the same key should be bound once, got %d", count)
+	if !a.runAppKeybind(w, ui.Cmd|ui.Alt, ui.KeyLeft) {
+		t.Fatal("the terminal's OnKey should run the Option binding")
+	}
+}
+
+func TestRunAppKeybindRunsResize(t *testing.T) {
+	a := testApp(t)
+	a.keybinds = []config.Keybind{{Mods: ui.Alt | ui.Shift, Key: ui.KeyH, Action: "resize_split", Arg: "right,20"}}
+	w := &WindowState{app: a, store: model.NewStore[*Surface]()}
+	if !a.runAppKeybind(w, ui.Alt|ui.Shift, ui.KeyH) {
+		t.Fatal("the Option resize binding should run through OnKey")
 	}
 }
 

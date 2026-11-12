@@ -64,15 +64,20 @@ func (w *WindowState) windowBindings() []windowBinding {
 	add(ui.Cmd|ui.Super, ui.KeyBracketRight, func() { w.goToPane(model.NavNext) })
 	for _, kb := range w.app.keybinds {
 		id := keyID{kb.Mods, kb.Key}
-		switch kb.Action {
-		case "unbind", "ignore":
+		// A binding that uses Alt is left to the terminal's OnKey
+		// (runAppKeybind): on macOS Option reaches the input method and
+		// composes a character unless the focused terminal takes the key
+		// first, which it cannot while a window shortcut claims it. OnKey
+		// runs first and suppresses the character. An unbind or ignore only
+		// drops a default, and the terminal answers the key itself.
+		if kb.Mods&ui.Alt != 0 || kb.Action == "unbind" || kb.Action == "ignore" {
 			if _, ok := runs[id]; ok {
 				runs[id] = nil
 			}
-		default:
-			if run := w.appAction(kb); run != nil {
-				add(kb.Mods, kb.Key, run)
-			}
+			continue
+		}
+		if run := w.appAction(kb); run != nil {
+			add(kb.Mods, kb.Key, run)
 		}
 	}
 	out := make([]windowBinding, 0, len(order))
@@ -306,8 +311,12 @@ func (a *App) runAppKeybind(w *WindowState, mods ui.Modifiers, key ui.Key) bool 
 			continue
 		}
 		switch kb.Action {
-		case "unbind", "ignore":
+		case "unbind":
 			return false
+		case "ignore":
+			// Ghostty's ignore takes the key and does nothing, so the input
+			// method's composed character must not reach the program.
+			return true
 		}
 		if run := w.appAction(kb); run != nil {
 			run()

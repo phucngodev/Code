@@ -2,6 +2,7 @@ package app
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/egoist/mygo/plugins/terminal"
@@ -90,14 +91,22 @@ func TestLiveResizeKeybind(t *testing.T) {
 	w := liveWindow(t, []string{"alt+shift+l=resize_split:right,20"})
 	tester := ui.NewTester(w.view, 900, 600)
 	tester.Frame()
-	if s := w.focusedSurface(); s == nil || s.term == nil {
+	s := w.focusedSurface()
+	if s == nil || s.term == nil {
 		t.Fatalf("terminal did not start: %+v", s)
 	}
-	before := w.store.Selected().SelectedTab().Panes.Root.Pct
-	tester.Key(ui.Alt|ui.Shift, ui.KeyL)
+	tab := w.store.Selected().SelectedTab()
+	before := tab.Panes.Root.Pct
+	// macOS sends the key, then the character Option composes for it. The
+	// app keybind must take the key first, so the character never reaches the
+	// program; TypeKey models that order.
+	tester.TypeKey(ui.Alt|ui.Shift, ui.KeyL, "Ò")
 	tester.Frame()
-	if after := w.store.Selected().SelectedTab().Panes.Root.Pct; after == before {
+	if after := tab.Panes.Root.Pct; after == before {
 		t.Fatalf("alt+shift+l did not resize the split (pct %v)", before)
+	}
+	if text := s.term.Text(); strings.Contains(text, "Ò") {
+		t.Fatal("the character Option composed reached the terminal")
 	}
 }
 
