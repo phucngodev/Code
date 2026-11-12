@@ -2,6 +2,7 @@ package app
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -124,10 +125,13 @@ func TestProcessDirFollowsCd(t *testing.T) {
 	if !waitUntil(func() bool { return strings.TrimSpace(s.term.Text()) != "" }, 5*time.Second) {
 		t.Fatal("the shell produced no prompt")
 	}
-	// /tmp is a symlink to /private/tmp on macOS, which the process's own
-	// directory resolves.
-	s.term.Send([]byte("cd /private/tmp\n"))
-	if !waitUntil(func() bool { dir, _ := processDir(shell); return dir == "/private/tmp" }, 5*time.Second) {
+	// The kernel reports the resolved path, so compare with the resolved one.
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.term.Send([]byte("cd '" + dir + "'\n"))
+	if !waitUntil(func() bool { got, _ := processDir(shell); return got == dir }, 5*time.Second) {
 		t.Fatal("the shell's working directory did not follow cd")
 	}
 }
