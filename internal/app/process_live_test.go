@@ -110,3 +110,36 @@ func TestRunningFollowsForegroundProcess(t *testing.T) {
 		t.Fatal("a command should count as running")
 	}
 }
+
+// TestConfirmCloseAsksForARunningCommand checks the confirm predicate itself:
+// an idle shell does not ask, a command does.
+func TestConfirmCloseAsksForARunningCommand(t *testing.T) {
+	w, s := liveShellWindow(t)
+	defer s.close()
+	shellOf(t, s)
+
+	if !waitUntil(func() bool { return !w.confirmClose([]*Surface{s}) }, 5*time.Second) {
+		t.Fatal("an idle shell should not ask to confirm")
+	}
+	s.term.Send([]byte("sleep 30\n"))
+	if !waitUntil(func() bool { return w.confirmClose([]*Surface{s}) }, 5*time.Second) {
+		t.Fatal("a running command should ask to confirm")
+	}
+}
+
+// TestClosingTabWithRunningCommandConfirms checks that closing the tab holding
+// a running command asks to confirm rather than dropping it.
+func TestClosingTabWithRunningCommandConfirms(t *testing.T) {
+	w, s := liveShellWindow(t)
+	defer s.close()
+	shellOf(t, s)
+	s.term.Send([]byte("sleep 30\n"))
+	if !waitUntil(func() bool { return s.running() }, 5*time.Second) {
+		t.Fatal("a command should count as running")
+	}
+
+	w.closeTab(w.store.Selected().SelectedTab())
+	if w.pending == nil {
+		t.Fatal("closing a tab with a running command should ask to confirm")
+	}
+}

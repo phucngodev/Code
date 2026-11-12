@@ -2,6 +2,7 @@ package app
 
 import (
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -168,6 +169,21 @@ func TestSessionsListRenders(t *testing.T) {
 	tester.Frame()
 	if !tester.HasText("First session") || !tester.HasText("Second session") {
 		t.Fatal("the sessions list should show the saved sessions")
+	}
+}
+
+func TestAppKeyFreesControlKeysOnLinux(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		if got := appKey("F"); got != "Cmd+F" {
+			t.Fatalf("appKey(F) on macOS = %q, want Cmd+F", got)
+		}
+		return
+	}
+	if got := appKey("F"); got != "Shift+CmdOrCtrl+F" {
+		t.Fatalf("appKey(F) = %q, want Shift+CmdOrCtrl+F", got)
+	}
+	if got := appKey("P"); got != "Shift+CmdOrCtrl+P" {
+		t.Fatalf("appKey(P) = %q, want Shift+CmdOrCtrl+P", got)
 	}
 }
 

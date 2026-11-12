@@ -9,6 +9,16 @@ import (
 	"github.com/phucngodev/code/internal/model"
 )
 
+// appKey names a menu shortcut that must not shadow a Control key a program
+// uses, as vim and a shell use Control+F, Control+P and Control+C on Linux:
+// Command on macOS, Control+Shift elsewhere.
+func appKey(key string) string {
+	if runtime.GOOS == "darwin" {
+		return "Cmd+" + key
+	}
+	return "Shift+CmdOrCtrl+" + key
+}
+
 // buildMenu builds the application menu. Menu commands act on the window the
 // event came from, falling back to the focused one.
 func (a *App) buildMenu() *mygo.Menu {
@@ -78,28 +88,19 @@ func (a *App) buildMenu() *mygo.Menu {
 		item("Split Down", "Shift+CmdOrCtrl+D", func(w *WindowState) { w.splitFocused(model.DirDown) }),
 	}
 
-	// Copy, paste and select all act on the focused terminal. Their keys are
-	// the terminal's own: Command on macOS, Control+Shift elsewhere, so that
-	// Control+C stays the shell's interrupt.
-	editKey := func(key string) string {
-		if runtime.GOOS == "darwin" {
-			return "Cmd+" + key
-		}
-		return "Shift+CmdOrCtrl+" + key
-	}
 	editMenu := []*mygo.MenuItem{
-		{Role: mygo.RoleCopy, Accelerator: editKey("C")},
-		{Role: mygo.RolePaste, Accelerator: editKey("V")},
-		{Role: mygo.RoleSelectAll, Accelerator: editKey("A")},
+		{Role: mygo.RoleCopy, Accelerator: appKey("C")},
+		{Role: mygo.RolePaste, Accelerator: appKey("V")},
+		{Role: mygo.RoleSelectAll, Accelerator: appKey("A")},
 		mygo.Separator(),
-		item("Find…", "CmdOrCtrl+F", func(w *WindowState) { w.openFind() }),
+		item("Find…", appKey("F"), func(w *WindowState) { w.openFind() }),
 		item("Find Next", "CmdOrCtrl+G", func(w *WindowState) { w.searchNext() }),
 		item("Find Previous", "Shift+CmdOrCtrl+G", func(w *WindowState) { w.searchPrevious() }),
 	}
 
 	viewMenu := []*mygo.MenuItem{
 		item("Toggle Sidebar", "CmdOrCtrl+B", func(w *WindowState) { w.toggleSidebar() }),
-		item("Go to…", "CmdOrCtrl+P", func(w *WindowState) { w.openPalette() }),
+		item("Go to…", appKey("P"), func(w *WindowState) { w.openPalette() }),
 		item("Zoom Pane", "Shift+CmdOrCtrl+Enter", func(w *WindowState) { w.toggleZoom() }),
 		mygo.Separator(),
 		windowItem("Enter Full Screen", "", func(win *mygo.Window) { win.SetFullScreen(!win.IsFullScreen()) }),

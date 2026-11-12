@@ -5,21 +5,29 @@ package app
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
 
-// childPIDs returns the PIDs of this process's direct children, as the
-// kernel lists them for each task.
+// childPIDs returns the PIDs of this process's direct children. The kernel
+// lists a child under the task that forked it, and Go runs exec on whichever
+// thread its goroutine is on, so every task's children are read and joined.
 func childPIDs(pid int) []int {
-	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/task/%d/children", pid, pid))
-	if err != nil {
-		return nil
-	}
-	fields := strings.Fields(string(data))
-	out := make([]int, 0, len(fields))
-	for _, field := range fields {
-		if n, err := strconv.Atoi(field); err == nil {
+	paths, _ := filepath.Glob(fmt.Sprintf("/proc/%d/task/*/children", pid))
+	seen := map[int]bool{}
+	var out []int
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		for _, field := range strings.Fields(string(data)) {
+			n, err := strconv.Atoi(field)
+			if err != nil || seen[n] {
+				continue
+			}
+			seen[n] = true
 			out = append(out, n)
 		}
 	}
