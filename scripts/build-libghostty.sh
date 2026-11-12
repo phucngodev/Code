@@ -51,7 +51,12 @@ else
     mkdir -p "$cache"
     git clone --filter=blob:none https://github.com/ghostty-org/ghostty "$src"
   fi
-  git -C "$src" fetch --tags origin
+  # A checkout that already has the commit needs no fetch. Otherwise fetch,
+  # forcing the moving `tip` tag the remote rewrites, which a plain
+  # `fetch --tags` refuses to clobber.
+  if ! git -C "$src" cat-file -e "$commit^{commit}" 2>/dev/null; then
+    git -C "$src" fetch --tags --force origin
+  fi
   git -C "$src" checkout --detach "$commit"
 fi
 

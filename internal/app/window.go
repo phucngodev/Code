@@ -44,6 +44,10 @@ type WindowState struct {
 	// quit time.
 	bounds    model.Frame
 	hasBounds bool
+	// prevBounds is the window's frame before the last Fill, Center or Tile,
+	// which Return to Previous Size goes back to.
+	prevBounds    mygo.Rectangle
+	hasPrevBounds bool
 
 	// renaming is the id of the workspace being renamed.
 	renaming  string
@@ -373,7 +377,14 @@ func (w *WindowState) buildSurface(c *ui.Context, tab *model.Tab[*Surface], s *S
 		return
 	}
 	t := c.Theme()
+	// Super and the pointer drag a pane, so no grip is drawn: the pane is
+	// the drag source itself, and the terminal lets the pointer through
+	// while Super is held, except over a link, which Command+click opens.
+	dragging := len(tab.Panes.Leaves()) > 1 && c.Modifiers()&ui.Super != 0
 	pane := ui.Box(c).Fill()
+	if dragging {
+		pane = pane.Drag(s)
+	}
 	pane.Children(func() {
 		// Key the terminal before it builds, so the terminal's own view reads
 		// the focus while it builds: Element.Key runs after View has built,
@@ -381,6 +392,13 @@ func (w *WindowState) buildSurface(c *ui.Context, tab *model.Tab[*Surface], s *S
 		// one, and its cursor would draw unfocused and never blink.
 		c.Key(s.id)
 		el := terminal.View(c, s.term).Bind(&s.handle).Fill()
+		if dragging {
+			term := s.term
+			el = el.HitTest(func(x, y float32, r ui.Rect) bool {
+				link, _, at := term.HoveredLink()
+				return link != "" && at.Contains(x, y)
+			})
+		}
 		if s.wantFocus {
 			// Focus, not AutoFocus: a pane that already exists is not born
 			// this frame, so AutoFocus would leave the keyboard where it was
@@ -395,9 +413,6 @@ func (w *WindowState) buildSurface(c *ui.Context, tab *model.Tab[*Surface], s *S
 		if s.handle.Focused(c) && c.WindowActive() {
 			w.noteFocused(s)
 		}
-		if len(tab.Panes.Leaves()) > 1 {
-			w.buildPaneGrip(c, s)
-		}
 	})
 	if dragged, ok := ui.Drop[*Surface](pane); ok && dragged != s {
 		split, dir := paneDropAt(pane)
@@ -406,19 +421,6 @@ func (w *WindowState) buildSurface(c *ui.Context, tab *model.Tab[*Surface], s *S
 	if _, over := ui.DragOver[*Surface](pane); over {
 		pane.Border(2, t.Accent)
 	}
-}
-
-// buildPaneGrip draws the dots a pane is dragged by, at its top center.
-func (w *WindowState) buildPaneGrip(c *ui.Context, s *Surface) {
-	t := c.Theme()
-	grip := ui.Row(c).Attach(ui.AnchorTop, ui.AnchorTop).Top(6).Gap(3).
-		Padding(3, 7).Radius(5).Background(t.Surface).Border(1, t.Border).
-		Cursor(ui.CursorPointer).Drag(s).Label("Move pane").Description("Drag to move or split")
-	grip.Children(func() {
-		for i := 0; i < 3; i++ {
-			ui.Box(c).Size(3, 3).Radius(2).Background(t.TextMuted)
-		}
-	})
 }
 
 // paneDropAction is a pane drag that ended on another pane.

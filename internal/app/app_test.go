@@ -48,7 +48,7 @@ func TestSurfaceRunning(t *testing.T) {
 		t.Fatal("a program still running should read as running")
 	}
 
-	exited, err := terminal.New(terminal.Options{Command: []string{"/bin/true"}})
+	exited, err := terminal.New(terminal.Options{Command: []string{"/usr/bin/true"}})
 	if err != nil {
 		t.Fatal(err)
 	}

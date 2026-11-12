@@ -21,6 +21,31 @@ func workArea(win *mygo.Window) mygo.Rectangle {
 	return mygo.Screen.DisplayMatching(win.Bounds()).WorkArea
 }
 
+// manageWindow records the window's frame before a Fill, Center or Tile, so
+// Return to Previous Size can go back to it, then runs the action.
+func (a *App) manageWindow(win *mygo.Window, act func()) {
+	if win == nil {
+		return
+	}
+	if w := a.windowFor(win); w != nil {
+		w.prevBounds = win.Bounds()
+		w.hasPrevBounds = true
+	}
+	act()
+}
+
+// restorePreviousSize swaps the window with the frame it had before the last
+// Fill, Center or Tile, so pressing again returns to that one.
+func (a *App) restorePreviousSize(win *mygo.Window) {
+	w := a.windowFor(win)
+	if w == nil || !w.hasPrevBounds {
+		return
+	}
+	current := win.Bounds()
+	win.SetBounds(w.prevBounds)
+	w.prevBounds = current
+}
+
 // fillWindow fills the work area of the display the window is on.
 func fillWindow(win *mygo.Window) {
 	if rect := fillRect(workArea(win)); rect.Width > 0 && rect.Height > 0 {

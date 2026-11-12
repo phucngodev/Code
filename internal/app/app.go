@@ -65,6 +65,13 @@ type App struct {
 	// is whether `keybind = clear` dropped the terminal's default bindings.
 	keybinds        []config.Keybind
 	keybindsCleared bool
+	// shellMu guards the shell lookup for surfaces: shellQueue holds the
+	// surfaces still waiting for their shell process, shellKnown the child
+	// processes already seen, and shellWatching whether a watcher runs.
+	shellMu       sync.Mutex
+	shellQueue    []*Surface
+	shellKnown    map[int]bool
+	shellWatching bool
 	// configMod is the config file's last seen modification time, so the
 	// watcher reloads it when it changes on disk.
 	configMod time.Time

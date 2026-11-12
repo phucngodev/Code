@@ -24,6 +24,8 @@ type Surface struct {
 
 	term     *terminal.Terminal
 	startErr error
+	// shellPid is the shell process found for this surface, once looked up.
+	shellPid int
 	// started is set once start has attempted to launch the program, so a
 	// failure is not retried every frame. closed keeps close idempotent.
 	started bool
@@ -42,8 +44,11 @@ func (s *Surface) LeafTitle() string { return s.title }
 // LeafDir is the terminal's working directory, or empty.
 func (s *Surface) LeafDir() string { return s.dir }
 
-// running reports whether the surface's program is still running, as one whose
-// terminal has not reported it ended.
+// running reports whether a command is running in this surface: the shell's
+// terminal has a foreground process group of its own means it sits at a
+// prompt, and another means a command is running. A surface whose shell
+// cannot be found is reported as running, as Ghostty confirms when shell
+// integration cannot tell.
 func (s *Surface) running() bool {
 	if s.term == nil || s.closed {
 		return false
@@ -52,8 +57,12 @@ func (s *Surface) running() bool {
 	case <-s.term.Done():
 		return false
 	default:
+	}
+	pid, ok := s.shellPID()
+	if !ok {
 		return true
 	}
+	return commandRunning(pid)
 }
 
 // setDir records the directory the shell reported, keeping the last one when a
@@ -139,6 +148,7 @@ func (s *Surface) start() {
 	}
 	s.term = term
 	s.owner.app.addLive(s)
+	s.owner.app.watchShell(s)
 }
 
 // applyConfig updates a running terminal after the settings changed.

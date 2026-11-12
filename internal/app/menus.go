@@ -148,20 +148,7 @@ func (a *App) buildMenu() *mygo.Menu {
 		}))
 	}
 
-	windowMenu := []*mygo.MenuItem{
-		{Role: mygo.RoleMinimize, Accelerator: "CmdOrCtrl+M"},
-		{Role: mygo.RoleZoom},
-		mygo.Separator(),
-		windowItem("Fill", "Ctrl+Cmd+F", func(win *mygo.Window) { fillWindow(win) }),
-		windowItem("Center", "Ctrl+Cmd+X", func(win *mygo.Window) { centerWindow(win) }),
-		mygo.Separator(),
-		windowItem("Tile Left Half", "Ctrl+Cmd+Left", func(win *mygo.Window) { tileWindow(win, tileLeft) }),
-		windowItem("Tile Right Half", "Ctrl+Cmd+Right", func(win *mygo.Window) { tileWindow(win, tileRight) }),
-		windowItem("Tile Top Half", "Ctrl+Cmd+Up", func(win *mygo.Window) { tileWindow(win, tileTop) }),
-		windowItem("Tile Bottom Half", "Ctrl+Cmd+Down", func(win *mygo.Window) { tileWindow(win, tileBottom) }),
-		mygo.Separator(),
-		{Role: mygo.RoleFront},
-	}
+	windowMenu := a.windowMenuItems()
 
 	helpMenu := []*mygo.MenuItem{
 		{Label: "Keyboard Shortcuts", Click: func(*mygo.MenuItem, *mygo.Window) { a.ShowShortcuts() }},
@@ -176,4 +163,39 @@ func (a *App) buildMenu() *mygo.Menu {
 		{Label: "Window", Submenu: windowMenu},
 		{Label: "Help", Submenu: helpMenu},
 	})
+}
+
+// windowMenuItems is the Window menu. Its window management commands and
+// shortcuts follow macOS's own (System Settings > Keyboard > Keyboard
+// Shortcuts > Windows), so pressing them manages the window here.
+func (a *App) windowMenuItems() []*mygo.MenuItem {
+	windowItem := func(label, accelerator string, fn func(*mygo.Window)) *mygo.MenuItem {
+		return &mygo.MenuItem{
+			Label:       label,
+			Accelerator: accelerator,
+			Click: func(_ *mygo.MenuItem, win *mygo.Window) {
+				if win == nil {
+					win = mygo.FocusedWindow()
+				}
+				if win != nil {
+					fn(win)
+				}
+			},
+		}
+	}
+	return []*mygo.MenuItem{
+		{Role: mygo.RoleMinimize, Accelerator: "CmdOrCtrl+M"},
+		{Role: mygo.RoleZoom},
+		mygo.Separator(),
+		windowItem("Fill", "Ctrl+Shift+F", func(win *mygo.Window) { a.manageWindow(win, func() { fillWindow(win) }) }),
+		windowItem("Center", "Ctrl+Shift+X", func(win *mygo.Window) { a.manageWindow(win, func() { centerWindow(win) }) }),
+		windowItem("Return to Previous Size", "Ctrl+Shift+R", func(win *mygo.Window) { a.restorePreviousSize(win) }),
+		mygo.Separator(),
+		windowItem("Tile Left Half", "Ctrl+Shift+Left", func(win *mygo.Window) { a.manageWindow(win, func() { tileWindow(win, tileLeft) }) }),
+		windowItem("Tile Right Half", "Ctrl+Shift+Right", func(win *mygo.Window) { a.manageWindow(win, func() { tileWindow(win, tileRight) }) }),
+		windowItem("Tile Top Half", "Ctrl+Shift+Up", func(win *mygo.Window) { a.manageWindow(win, func() { tileWindow(win, tileTop) }) }),
+		windowItem("Tile Bottom Half", "Ctrl+Shift+Down", func(win *mygo.Window) { a.manageWindow(win, func() { tileWindow(win, tileBottom) }) }),
+		mygo.Separator(),
+		{Role: mygo.RoleFront},
+	}
 }

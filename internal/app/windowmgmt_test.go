@@ -53,3 +53,26 @@ func TestCenterRectClampsToWorkArea(t *testing.T) {
 		t.Fatalf("centerRect = %+v", got)
 	}
 }
+
+func TestWindowMenuFollowsMacOSShortcuts(t *testing.T) {
+	want := map[string]string{
+		"Fill":                    "Ctrl+Shift+F",
+		"Center":                  "Ctrl+Shift+X",
+		"Return to Previous Size": "Ctrl+Shift+R",
+		"Tile Left Half":          "Ctrl+Shift+Left",
+		"Tile Right Half":         "Ctrl+Shift+Right",
+		"Tile Top Half":           "Ctrl+Shift+Up",
+		"Tile Bottom Half":        "Ctrl+Shift+Down",
+	}
+	got := map[string]string{}
+	for _, item := range (&App{}).windowMenuItems() {
+		if item.Accelerator != "" {
+			got[item.Label] = item.Accelerator
+		}
+	}
+	for label, accelerator := range want {
+		if got[label] != accelerator {
+			t.Errorf("%s accelerator = %q, want %q", label, got[label], accelerator)
+		}
+	}
+}
