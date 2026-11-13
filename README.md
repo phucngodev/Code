@@ -82,10 +82,12 @@ and records the ref in `resources/libghostty-vt-local.version`. `main.go` sets
 `go run .` and a packaged app use it. `MYGO_GHOSTTY_VT` set yourself still wins.
 
 Set `GHOSTTY_SRC` to build from a checkout you already have at the tag,
-instead of cloning one into a cache. The built libraries are git-ignored, so
-run the script once after cloning. Code loads only its own library: it refuses
-to start on MyGo's pinned one, unless `CODE_ALLOW_MYGO_GHOSTTY=1` allows it
-for development. The revision to use is kept in `ghostty.version`.
+instead of cloning one into a cache. The built libraries are committed under
+`resources/<os>-<arch>/`, so a release copies them for its target and does not
+need Zig or the Ghostty source; run the script and commit `resources/` when you
+change the revision. Code loads only its own library: it refuses to start on
+MyGo's pinned one, unless `CODE_ALLOW_MYGO_GHOSTTY=1` allows it for
+development. The revision to use is kept in `ghostty.version`.
 
 `mygo build` also bundles MyGo's own pinned `libghostty-vt`, which Code does
 not use and must not ship. `scripts/package.sh` builds a macOS app, removes
@@ -108,12 +110,17 @@ About window carry the tag.
 
 Each platform and architecture gets its own app, carrying only its own
 `libghostty-vt`, so no download holds two chips' worth. `scripts/build-release.sh`
-builds and packages them:
+builds and packages them from the libraries committed under
+`resources/<os>-<arch>/`, so it needs no Zig and copies the prebuilt library
+for each target:
 
 ```sh
 scripts/build-release.sh                       # all four
 scripts/build-release.sh darwin/arm64          # or darwin/amd64, linux/amd64, linux/arm64
 ```
+
+A missing prebuilt library fails the run with the command to build it; set
+`CODE_BUILD_LIBGHOSTTY=1` to build it then and there.
 
 The version the app reports (About window, `CFBundleShortVersionString`, disk
 image and package names) comes from `mygo.json`. `build-release.sh` stamps it

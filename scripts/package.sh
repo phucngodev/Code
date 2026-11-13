@@ -46,6 +46,22 @@ fi
 
 for app in "${apps[@]}"; do
   [ -d "$app" ] || continue
+  res="$app/Contents/Resources"
+  # Copy the prebuilt libraries for this platform into the app, in case mygo
+  # did not bundle the platform resources. A universal app carries both archs.
+  case "$(basename "$(dirname "$app")")" in
+    darwin-universal)
+      for arch in arm64 amd64; do
+        lib="resources/darwin-$arch/libghostty-vt-local-darwin-$arch.dylib"
+        [ -f "$lib" ] && { mkdir -p "$res"; cp -f "$lib" "$res/"; }
+      done
+      ;;
+    darwin-*)
+      arch="$(basename "$(dirname "$app")")"; arch="${arch#darwin-}"
+      lib="resources/darwin-$arch/libghostty-vt-local-darwin-$arch.dylib"
+      [ -f "$lib" ] && { mkdir -p "$res"; cp -f "$lib" "$res/"; }
+      ;;
+  esac
   # The name MyGo's pinned library takes; Code's own has -local-<os>-<arch>.
   rm -f "$app/Contents/Resources/libghostty-vt.dylib"
   if [ -e "$app/Contents/Resources/libghostty-vt.dylib" ]; then

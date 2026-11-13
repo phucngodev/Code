@@ -1,7 +1,5 @@
 build/
 .mygo/
-resources/libghostty-vt-local*
-resources/*/libghostty-vt-local*
 .DS_Store
 # Shim directories an older test run left in the app package directory.
 internal/app/[0-9a-f]*-[0-9a-f]*-[0-9a-f]*-[0-9a-f]*-[0-9a-f]*/

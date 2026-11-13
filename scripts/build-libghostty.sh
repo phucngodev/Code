@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Builds libghostty-vt from a Ghostty ref (tag or commit) and installs it into
 # the resources, so this Code uses that revision. main.go points MyGo's
-# terminal plugin at the built library through MYGO_GHOSTTY_VT.
+# terminal plugin at the built library through MYGO_GHOSTTY_VT. The built
+# libraries are committed under resources/<os>-<arch>/, so a release copies
+# them instead of building them; run this and commit resources/ when the ref
+# changes.
 #
 #   scripts/build-libghostty.sh                 # host platform, the pinned ref
 #   scripts/build-libghostty.sh v1.5.0
@@ -96,7 +99,7 @@ build_one() {
   name="$(lib_name "$goos" "$goarch")"
   prefix="$(mktemp -d)"
   echo "building $goos/$goarch ($zig)"
-  ( cd "$src" && zig build -Demit-lib-vt -Dtarget="$zig" -Doptimize=ReleaseFast -Dstrip=true --prefix "$prefix" )
+  ( cd "$src" && zig build -Demit-lib-vt -Demit-xcframework=false -Dtarget="$zig" -Doptimize=ReleaseFast -Dstrip=true --prefix "$prefix" )
   mkdir -p "$resources/$goos-$goarch"
   cp "$prefix/$built" "$resources/$goos-$goarch/$name"
   rm -rf "$prefix"

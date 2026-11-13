@@ -15,10 +15,11 @@ permissions:
 jobs:
   release:
     name: Build and publish
-    # Disk images and signing need macOS, and Zig cross-compiles libghostty-vt
-    # for Linux from here too.
+    # Disk images and signing need macOS. libghostty-vt is prebuilt and
+    # committed under resources/<os>-<arch>/, so no Zig or Ghostty source is
+    # needed here.
     runs-on: macos-26
-    timeout-minutes: 90
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
@@ -27,17 +28,24 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Install Zig
-        uses: mlugg/setup-zig@v2
-        with:
-          # Must match Ghostty's minimum_zig_version for the pinned release.
-          version: 0.17.0
-
       - name: Test
         run: go test ./...
 
-      - name: Build libghostty-vt
-        run: ./scripts/build-libghostty.sh "$(cat ghostty.version)" all
+      # The release packages the prebuilt library for each target; fail before
+      # the build if one is missing, rather than fall back to building it.
+      - name: Verify the prebuilt libghostty-vt
+        run: |
+          missing=0
+          for target in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do
+            if ! ls resources/"$target"/libghostty-vt-local-* >/dev/null 2>&1; then
+              echo "missing resources/$target/libghostty-vt-local-*" >&2
+              missing=1
+            fi
+          done
+          if [ "$missing" != 0 ]; then
+            echo "run ./scripts/build-libghostty.sh $(cat ghostty.version) all locally and commit resources/" >&2
+            exit 1
+          fi
 
       # One app per platform and architecture, each carrying only its own
       # libghostty-vt: darwin arm64 and amd64 (signed, with a disk image) and
