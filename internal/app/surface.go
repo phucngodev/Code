@@ -50,12 +50,12 @@ func (s *Surface) LeafTitle() string { return s.title }
 // LeafDir is the terminal's working directory, or empty.
 func (s *Surface) LeafDir() string { return s.dir }
 
-// running reports whether a command is running in this surface: the shell's
+// busy reports whether a command is running in this surface: the shell's
 // terminal has a foreground process group of its own means it sits at a
 // prompt, and another means a command is running. A surface whose shell
-// cannot be found is reported as running, as Ghostty confirms when shell
-// integration cannot tell.
-func (s *Surface) running() bool {
+// cannot be found is busy, as Ghostty confirms when shell integration cannot
+// tell.
+func (s *Surface) busy() bool {
 	if s.term == nil || s.closed {
 		return false
 	}
@@ -68,7 +68,7 @@ func (s *Surface) running() bool {
 	if !ok {
 		return true
 	}
-	return commandRunning(pid)
+	return foregroundPID(pid) != 0
 }
 
 // setDir records the directory the shell reported, keeping the last one when a

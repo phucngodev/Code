@@ -32,7 +32,7 @@ func TestSendEventTruncatesLongDetail(t *testing.T) {
 	sendEvent(Event{
 		Version: 1, Kind: KindWorking, Agent: "claude", SurfaceID: "term-1",
 		At: time.Now(), Detail: strings.Repeat("x", maximumLineLength),
-	}, path, environment, &bytes.Buffer{})
+	}, path, environment)
 
 	select {
 	case event := <-delivered:

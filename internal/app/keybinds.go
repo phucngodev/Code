@@ -1,8 +1,6 @@
 package app
 
 import (
-	"log"
-	"os"
 	"strconv"
 	"strings"
 
@@ -26,33 +24,20 @@ type windowBinding struct {
 // same key, and an unbind drops it.
 func (w *WindowState) applyWindowKeybinds(c *ui.Context) {
 	for _, b := range w.windowBindings() {
-		b := b
-		c.OnWindowShortcut(b.mods, b.key, func() {
-			if debugKeys() {
-				log.Printf("code: window shortcut mods=%b key=%v", b.mods, b.key)
-			}
-			b.run()
-		})
+		c.OnWindowShortcut(b.mods, b.key, b.run)
 	}
 }
-
-// debugKeys reports whether CODE_DEBUG_KEYS is set, which logs every key the
-// window shortcuts and the terminals see, to find one that does not fire.
-func debugKeys() bool { return os.Getenv("CODE_DEBUG_KEYS") != "" }
 
 func (w *WindowState) windowBindings() []windowBinding {
 	type keyID struct {
 		mods ui.Modifiers
 		key  ui.Key
 	}
-	var order []keyID
+	// One binding per key, so a config binding replaces a default of the same
+	// key and an unbind or ignore drops it.
 	runs := map[keyID]func(){}
 	add := func(mods ui.Modifiers, key ui.Key, run func()) {
-		id := keyID{mods, key}
-		if _, ok := runs[id]; !ok {
-			order = append(order, id)
-		}
-		runs[id] = run
+		runs[keyID{mods, key}] = run
 	}
 	add(ui.Cmd|ui.Alt, ui.KeyLeft, func() { w.goToPane(model.NavLeft) })
 	add(ui.Cmd|ui.Alt, ui.KeyRight, func() { w.goToPane(model.NavRight) })
@@ -63,7 +48,6 @@ func (w *WindowState) windowBindings() []windowBinding {
 	add(ui.Cmd|ui.Super, ui.KeyBracketLeft, func() { w.goToPane(model.NavPrevious) })
 	add(ui.Cmd|ui.Super, ui.KeyBracketRight, func() { w.goToPane(model.NavNext) })
 	for _, kb := range w.app.keybinds {
-		id := keyID{kb.Mods, kb.Key}
 		// A binding that uses Alt is left to the terminal's OnKey
 		// (runAppKeybind): on macOS Option reaches the input method and
 		// composes a character unless the focused terminal takes the key
@@ -71,19 +55,17 @@ func (w *WindowState) windowBindings() []windowBinding {
 		// runs first and suppresses the character. An unbind or ignore only
 		// drops a default, and the terminal answers the key itself.
 		if kb.Mods&ui.Alt != 0 || kb.Action == "unbind" || kb.Action == "ignore" {
-			if _, ok := runs[id]; ok {
-				runs[id] = nil
-			}
+			delete(runs, keyID{kb.Mods, kb.Key})
 			continue
 		}
 		if run := w.appAction(kb); run != nil {
 			add(kb.Mods, kb.Key, run)
 		}
 	}
-	out := make([]windowBinding, 0, len(order))
-	for _, id := range order {
-		if runs[id] != nil {
-			out = append(out, windowBinding{id.mods, id.key, runs[id]})
+	out := make([]windowBinding, 0, len(runs))
+	for id, run := range runs {
+		if run != nil {
+			out = append(out, windowBinding{id.mods, id.key, run})
 		}
 	}
 	return out
@@ -303,9 +285,6 @@ func (a *App) runAppKeybind(w *WindowState, mods ui.Modifiers, key ui.Key) bool 
 	if w == nil {
 		return false
 	}
-	if debugKeys() {
-		log.Printf("code: terminal key mods=%b key=%v", mods, key)
-	}
 	for _, kb := range a.keybinds {
 		if kb.Mods != mods || kb.Key != key {
 			continue
@@ -331,7 +310,7 @@ func (a *App) runAppKeybind(w *WindowState, mods ui.Modifiers, key ui.Key) bool 
 func terminalKeybinds(bindings []config.Keybind) []terminal.Keybind {
 	var out []terminal.Keybind
 	for _, kb := range bindings {
-		action, ok := terminalAction(kb.Action)
+		action, ok := terminalActions[kb.Action]
 		if !ok {
 			continue
 		}
@@ -340,34 +319,19 @@ func terminalKeybinds(bindings []config.Keybind) []terminal.Keybind {
 	return out
 }
 
-func terminalAction(name string) (terminal.Action, bool) {
-	switch name {
-	case "unbind":
-		return terminal.ActionNone, true
-	case "ignore":
-		return terminal.ActionIgnore, true
-	case "copy_to_clipboard":
-		return terminal.ActionCopy, true
-	case "paste_from_clipboard":
-		return terminal.ActionPaste, true
-	case "select_all":
-		return terminal.ActionSelectAll, true
-	case "clear_screen":
-		return terminal.ActionClearScreen, true
-	case "increase_font_size":
-		return terminal.ActionIncreaseFontSize, true
-	case "decrease_font_size":
-		return terminal.ActionDecreaseFontSize, true
-	case "reset_font_size":
-		return terminal.ActionResetFontSize, true
-	case "scroll_page_up":
-		return terminal.ActionScrollPageUp, true
-	case "scroll_page_down":
-		return terminal.ActionScrollPageDown, true
-	case "scroll_to_top":
-		return terminal.ActionScrollToTop, true
-	case "scroll_to_bottom":
-		return terminal.ActionScrollToBottom, true
-	}
-	return terminal.ActionNone, false
+// terminalActions maps the Ghostty actions the terminal plugin runs itself.
+var terminalActions = map[string]terminal.Action{
+	"unbind":               terminal.ActionNone,
+	"ignore":               terminal.ActionIgnore,
+	"copy_to_clipboard":    terminal.ActionCopy,
+	"paste_from_clipboard": terminal.ActionPaste,
+	"select_all":           terminal.ActionSelectAll,
+	"clear_screen":         terminal.ActionClearScreen,
+	"increase_font_size":   terminal.ActionIncreaseFontSize,
+	"decrease_font_size":   terminal.ActionDecreaseFontSize,
+	"reset_font_size":      terminal.ActionResetFontSize,
+	"scroll_page_up":       terminal.ActionScrollPageUp,
+	"scroll_page_down":     terminal.ActionScrollPageDown,
+	"scroll_to_top":        terminal.ActionScrollToTop,
+	"scroll_to_bottom":     terminal.ActionScrollToBottom,
 }

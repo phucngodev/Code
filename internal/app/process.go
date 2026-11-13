@@ -226,10 +226,3 @@ func validProcessDir(path string) (string, bool) {
 	}
 	return path, true
 }
-
-// foregroundGroupRunning reports whether a terminal with process group pgrp
-// has a different group in the foreground: a group of its own means the shell
-// sits at a prompt, and another means a command is running.
-func foregroundGroupRunning(pgrp, tpgid int) bool {
-	return tpgid > 0 && tpgid != pgrp
-}

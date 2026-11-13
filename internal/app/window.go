@@ -65,10 +65,11 @@ type WindowState struct {
 }
 
 // pendingClose is a close that waits for the user's answer: what the alert
-// says, and what runs when they confirm.
+// says, what its confirm button reads, and what runs when they confirm.
 type pendingClose struct {
 	title   string
 	message string
+	confirm string
 	close   func()
 }
 
@@ -140,7 +141,7 @@ func (w *WindowState) view(c *ui.Context) {
 // buildConfirm shows the alert of a close waiting for the user's answer.
 func (w *WindowState) buildConfirm(c *ui.Context) {
 	w.pendingOpen = true
-	switch ui.AlertDialog(c, &w.pendingOpen, w.pending.title, w.pending.message, "Cancel", "Close") {
+	switch ui.AlertDialog(c, &w.pendingOpen, w.pending.title, w.pending.message, "Cancel", w.pending.confirm) {
 	case ui.AlertDismissed, 0:
 		w.pending = nil
 	case 1:
@@ -726,7 +727,7 @@ func (w *WindowState) surfaceExited(s *Surface) {
 // and the setting wants a confirmation.
 func (w *WindowState) closeSurface(s *Surface) {
 	if w.confirmClose([]*Surface{s}) {
-		w.askClose("Close this terminal?", "A process is still running in it.", func() { w.closeSurfaceNow(s) })
+		w.askClose("Close this terminal?", runningMessage, func() { w.closeSurfaceNow(s) })
 		return
 	}
 	w.closeSurfaceNow(s)
@@ -751,7 +752,7 @@ func (w *WindowState) closeSurfaceNow(s *Surface) {
 // and the setting wants a confirmation.
 func (w *WindowState) closeTab(tab *model.Tab[*Surface]) {
 	if w.confirmClose(tab.Panes.Leaves()) {
-		w.askClose("Close this tab?", "A process is still running in it.", func() { w.closeTabNow(tab) })
+		w.askClose("Close this tab?", runningMessage, func() { w.closeTabNow(tab) })
 		return
 	}
 	w.closeTabNow(tab)
@@ -779,7 +780,7 @@ func (w *WindowState) closeTabNow(tab *model.Tab[*Surface]) {
 // program and the setting wants a confirmation.
 func (w *WindowState) closeWorkspace(ws *model.Workspace[*Surface]) {
 	if w.confirmClose(workspaceSurfaces(ws)) {
-		w.askClose("Close this workspace?", "A process is still running in it.", func() { w.closeWorkspaceNow(ws) })
+		w.askClose("Close this workspace?", runningMessage, func() { w.closeWorkspaceNow(ws) })
 		return
 	}
 	w.closeWorkspaceNow(ws)
@@ -815,7 +816,7 @@ func (w *WindowState) confirmClose(surfaces []*Surface) bool {
 		return len(surfaces) > 0
 	default:
 		for _, s := range surfaces {
-			if s.running() {
+			if s.busy() {
 				return true
 			}
 		}
@@ -823,13 +824,24 @@ func (w *WindowState) confirmClose(surfaces []*Surface) bool {
 	}
 }
 
-// askClose holds a close for the user's answer, showing its alert next frame.
-// A second close while the alert is up must not discard the first one.
+// runningMessage tells the user why a close is held: a pane, tab, workspace
+// or window still has a command running.
+const runningMessage = "A process is still running in it."
+
+// askClose holds a close for the user's answer, showing its alert next frame
+// with a confirm button that reads "Close". Its close is kept when a second
+// close arrives while the alert is up.
 func (w *WindowState) askClose(title, message string, close func()) {
+	w.askChoice(title, message, "Close", close)
+}
+
+// askChoice holds an action for the user's answer, with a confirm label of its
+// own, as a quit's "Quit".
+func (w *WindowState) askChoice(title, message, confirm string, action func()) {
 	if w.pending != nil {
 		return
 	}
-	w.pending = &pendingClose{title: title, message: message, close: close}
+	w.pending = &pendingClose{title: title, message: message, confirm: confirm, close: action}
 	w.markChanged()
 }
 

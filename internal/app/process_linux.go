@@ -74,23 +74,6 @@ func processArgs(pid int) []string {
 	return args
 }
 
-// commandRunning reports whether a command is running in the terminal whose
-// shell has this PID, from the process group and the terminal's foreground
-// process group in /proc/<pid>/stat. It reports true when the process cannot
-// be read, so a shell Code cannot inspect is confirmed like one running a
-// command, as Ghostty confirms when shell integration cannot tell.
-func commandRunning(pid int) bool {
-	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
-	if err != nil {
-		return true
-	}
-	pgrp, tpgid, ok := statProcessGroups(string(data))
-	if !ok {
-		return true
-	}
-	return foregroundGroupRunning(pgrp, tpgid)
-}
-
 // statProcessGroups reads the process group and the foreground process group
 // from the contents of /proc/<pid>/stat. The command name may hold spaces and
 // parentheses, so only the fields after its last closing one are read.

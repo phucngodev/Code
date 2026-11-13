@@ -36,6 +36,9 @@ type App struct {
 	windows    []*WindowState
 	byWindow   map[*mygo.Window]*WindowState
 	closedLast *model.WindowSession
+	// quitConfirmed is set once the user answered the quit confirmation, so
+	// the quit that runs then closes the windows without asking again.
+	quitConfirmed bool
 
 	mu            sync.Mutex
 	surfaceOwners map[string]*WindowState
@@ -149,6 +152,8 @@ func (a *App) ready() {
 	a.menu = a.buildMenu()
 	mygo.App.SetMenu(a.menu)
 	mygo.App.OnWillQuit(func(*mygo.QuitEvent) { a.shutdown() })
+	mygo.App.OnBeforeQuit(a.beforeQuit)
+	mygo.App.OnQuitCanceled(func() { a.quitConfirmed = false })
 	for _, display := range mygo.Screen.Displays() {
 		a.workAreas = append(a.workAreas, display.WorkArea)
 	}
@@ -249,13 +254,13 @@ func (a *App) newWindow(frame *model.WindowSession) *WindowState {
 	a.byWindow[win] = w
 	win.OnClosed(func() { a.windowClosed(w) })
 	// Closing a window whose terminals still run asks first, unless the user
-	// already answered by closing its last workspace.
+	// already answered by closing its last workspace, or by confirming a quit.
 	win.OnClose(func(e *mygo.CloseEvent) {
-		if w.closing || !w.confirmClose(w.allSurfaces()) {
+		if w.closing || a.quitConfirmed || !w.confirmClose(w.allSurfaces()) {
 			return
 		}
 		e.PreventDefault()
-		w.askClose("Close this window?", "A process is still running in it.", func() {
+		w.askClose("Close this window?", runningMessage, func() {
 			w.closing = true
 			w.win.Close()
 		})
@@ -577,6 +582,50 @@ func (a *App) flushSession() {
 	}
 	a.saveMu.Unlock()
 	a.writer.flush(a.snapshot())
+}
+
+// beforeQuit gates a quit (Cmd+Q, the Quit menu item, a signal) on the
+// terminals still running a command, showing one alert for the whole app. A
+// session that is ending cannot be canceled, so it is let through to save.
+// Confirming sets quitConfirmed and asks to quit again, so the whole quit
+// sequence runs and every window closes together.
+func (a *App) beforeQuit(e *mygo.QuitEvent) {
+	if e.SessionEnding || a.quitConfirmed || !a.confirmQuit() {
+		return
+	}
+	e.PreventDefault()
+	w := a.confirmWindow()
+	if w == nil {
+		return
+	}
+	w.askChoice("Quit Code?", "A process is still running in a terminal.", "Quit", func() {
+		a.quitConfirmed = true
+		mygo.App.Quit()
+	})
+}
+
+// confirmQuit reports whether quitting needs the user's answer, by the same
+// confirm-close-surface rule as closing a window: never, with a running
+// command, or always.
+func (a *App) confirmQuit() bool {
+	for _, w := range a.windows {
+		if w.confirmClose(w.allSurfaces()) {
+			return true
+		}
+	}
+	return false
+}
+
+// confirmWindow is the window the quit alert shows in: the focused one, else
+// the first.
+func (a *App) confirmWindow() *WindowState {
+	if w := a.byWindow[mygo.FocusedWindow()]; w != nil {
+		return w
+	}
+	if len(a.windows) > 0 {
+		return a.windows[0]
+	}
+	return nil
 }
 
 // shutdown stops background work and flushes what is unsaved.

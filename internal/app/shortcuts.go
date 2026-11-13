@@ -106,29 +106,10 @@ func tabAccelerators() []string {
 	return out
 }
 
-// menuAccelerators lists every shortcut Code binds itself, so a test can hold
-// the Keyboard Shortcuts window to the same set. Role items get their keys
-// from the OS and are not in it.
-func menuAccelerators() []string {
-	out := []string{
-		acc.settings, acc.reloadConfig, acc.newWindow, acc.newTab,
-		acc.closePane, acc.closeTab, acc.closeWindow, acc.splitRight, acc.splitDown,
-		acc.copy, acc.paste, acc.selectAll, acc.find, acc.findNext, acc.findPrevious,
-		acc.toggleSidebar, acc.goTo, acc.zoomPane, acc.prevWorkspace, acc.nextWorkspace,
-		acc.renameWorkspace, acc.minimize, acc.fill, acc.center, acc.previousSize,
-		acc.tileLeft, acc.tileRight, acc.tileTop, acc.tileBottom,
-	}
-	out = append(out, workspaceAccelerators()...)
-	out = append(out, workspaceAccelerator(9))
-	out = append(out, tabAccelerators()...)
-	out = append(out, tabAccelerator(9))
-	return out
-}
-
 // shortcutList is every shortcut Code adds, grouped by what it does.
 var shortcutList = []shortcutSection{
 	{"Workspaces", []shortcut{
-		{"Switch workspace", workspaceAccelerator(1), []string{"⌥", "1–8"}, []string{"Alt", "1–8"}, workspaceAccelerators()},
+		{"Switch workspace", "", []string{"⌥", "1–8"}, []string{"Alt", "1–8"}, workspaceAccelerators()},
 		{"Last workspace", workspaceAccelerator(9), nil, nil, nil},
 		{"Previous workspace", acc.prevWorkspace, nil, nil, nil},
 		{"Next workspace", acc.nextWorkspace, nil, nil, nil},
@@ -141,7 +122,7 @@ var shortcutList = []shortcutSection{
 	}},
 	{"Tabs and panes", []shortcut{
 		{"New tab", acc.newTab, nil, nil, nil},
-		{"Switch tab", tabAccelerator(1), []string{"⌘", "1–8"}, []string{"Ctrl", "1–8"}, tabAccelerators()},
+		{"Switch tab", "", []string{"⌘", "1–8"}, []string{"Ctrl", "1–8"}, tabAccelerators()},
 		{"Last tab", tabAccelerator(9), nil, nil, nil},
 		{"Split right", acc.splitRight, nil, nil, nil},
 		{"Split down", acc.splitDown, nil, nil, nil},

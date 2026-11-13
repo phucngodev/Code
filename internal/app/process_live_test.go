@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 
@@ -66,41 +67,40 @@ func shellOf(t *testing.T, s *Surface) int {
 	return pid
 }
 
-// TestForegroundCommandDetection checks that a shell sitting at a prompt does
-// not read as running a command, and one running a command does, from the
-// process groups of the shell the app recorded.
-func TestForegroundCommandDetection(t *testing.T) {
-	_, s := liveShellWindow(t)
-	defer s.close()
-	shell := shellOf(t, s)
-
-	if !waitUntil(func() bool { return !commandRunning(shell) }, 5*time.Second) {
-		t.Fatal("an idle shell should not read as running a command")
-	}
-	// Wait for the shell's first prompt before typing into it.
+// waitPrompt waits for the shell to print its first prompt.
+func waitPrompt(t *testing.T, s *Surface) {
+	t.Helper()
 	if !waitUntil(func() bool { return strings.TrimSpace(s.term.Text()) != "" }, 5*time.Second) {
 		t.Fatal("the shell produced no prompt")
 	}
-	s.term.Send([]byte("sleep 30\n"))
-	if !waitUntil(func() bool { return commandRunning(shell) }, 5*time.Second) {
-		t.Fatal("a command should read as running")
+}
+
+// waitBusy waits until the surface reads busy, or not, as want.
+func waitBusy(t *testing.T, s *Surface, want bool) {
+	t.Helper()
+	if !waitUntil(func() bool { return s.busy() == want }, 5*time.Second) {
+		t.Fatalf("surface busy = %v, want %v", !want, want)
 	}
 }
 
-// TestRunningFollowsForegroundProcess checks Surface.running follows the
-// foreground process of the shell the app recorded.
-func TestRunningFollowsForegroundProcess(t *testing.T) {
+// startCommand waits for the shell's first prompt, then runs a command that
+// keeps running, so the surface reads busy.
+func startCommand(t *testing.T, s *Surface) {
+	t.Helper()
+	waitPrompt(t, s)
+	s.term.Send([]byte("sleep 30\n"))
+	waitBusy(t, s, true)
+}
+
+// TestBusyFollowsForegroundProcess checks Surface.busy follows the shell's
+// foreground process: idle at a prompt, busy while a command runs.
+func TestBusyFollowsForegroundProcess(t *testing.T) {
 	_, s := liveShellWindow(t)
 	defer s.close()
 	shellOf(t, s)
 
-	if !waitUntil(func() bool { return !s.running() }, 5*time.Second) {
-		t.Fatal("an idle shell should not count as running a command")
-	}
-	s.term.Send([]byte("sleep 30\n"))
-	if !waitUntil(func() bool { return s.running() }, 5*time.Second) {
-		t.Fatal("a command should count as running")
-	}
+	waitBusy(t, s, false)
+	startCommand(t, s)
 }
 
 // TestProcessDirFollowsCd checks that the shell's working directory is read
@@ -109,12 +109,10 @@ func TestProcessDirFollowsCd(t *testing.T) {
 	_, s := liveShellWindow(t)
 	defer s.close()
 	shell := shellOf(t, s)
+	waitPrompt(t, s)
 
 	if !waitUntil(func() bool { dir, ok := processDir(shell); return ok && dir != "" }, 5*time.Second) {
 		t.Fatal("the shell's working directory was not read")
-	}
-	if !waitUntil(func() bool { return strings.TrimSpace(s.term.Text()) != "" }, 5*time.Second) {
-		t.Fatal("the shell produced no prompt")
 	}
 	// The kernel reports the resolved path, so compare with the resolved one.
 	dir, err := filepath.EvalSymlinks(t.TempDir())
@@ -133,17 +131,10 @@ func TestForegroundCommandArgs(t *testing.T) {
 	_, s := liveShellWindow(t)
 	defer s.close()
 	shell := shellOf(t, s)
+	startCommand(t, s)
 
-	if !waitUntil(func() bool { return strings.TrimSpace(s.term.Text()) != "" }, 5*time.Second) {
-		t.Fatal("the shell produced no prompt")
-	}
-	s.term.Send([]byte("sleep 30\n"))
 	if !waitUntil(func() bool {
-		pid := foregroundPID(shell)
-		if pid <= 0 {
-			return false
-		}
-		for _, arg := range processArgs(pid) {
+		for _, arg := range processArgs(foregroundPID(shell)) {
 			if arg == "sleep" {
 				return true
 			}
@@ -161,11 +152,11 @@ func TestConfirmCloseAsksForARunningCommand(t *testing.T) {
 	defer s.close()
 	shellOf(t, s)
 
-	if !waitUntil(func() bool { return !w.confirmClose([]*Surface{s}) }, 5*time.Second) {
+	if w.confirmClose([]*Surface{s}) {
 		t.Fatal("an idle shell should not ask to confirm")
 	}
-	s.term.Send([]byte("sleep 30\n"))
-	if !waitUntil(func() bool { return w.confirmClose([]*Surface{s}) }, 5*time.Second) {
+	startCommand(t, s)
+	if !w.confirmClose([]*Surface{s}) {
 		t.Fatal("a running command should ask to confirm")
 	}
 }
@@ -176,13 +167,40 @@ func TestClosingTabWithRunningCommandConfirms(t *testing.T) {
 	w, s := liveShellWindow(t)
 	defer s.close()
 	shellOf(t, s)
-	s.term.Send([]byte("sleep 30\n"))
-	if !waitUntil(func() bool { return s.running() }, 5*time.Second) {
-		t.Fatal("a command should count as running")
-	}
+	startCommand(t, s)
 
 	w.closeTab(w.store.Selected().SelectedTab())
 	if w.pending == nil {
 		t.Fatal("closing a tab with a running command should ask to confirm")
+	}
+}
+
+// TestBeforeQuitStopsForARunningCommand checks the app-level quit gate: an
+// idle shell does not stop a quit, one running a command does and shows the
+// alert.
+func TestBeforeQuitStopsForARunningCommand(t *testing.T) {
+	w, s := liveShellWindow(t)
+	defer s.close()
+	w.app.windows = append(w.app.windows, w)
+	shellOf(t, s)
+
+	waitBusy(t, s, false)
+	e := &mygo.QuitEvent{}
+	w.app.beforeQuit(e)
+	if e.DefaultPrevented() {
+		t.Fatal("an idle shell should not stop a quit")
+	}
+
+	startCommand(t, s)
+	e = &mygo.QuitEvent{}
+	w.app.beforeQuit(e)
+	if !e.DefaultPrevented() {
+		t.Fatal("a running command should stop a quit")
+	}
+	if w.pending == nil {
+		t.Fatal("the quit should wait for the user's answer")
+	}
+	if w.pending.confirm != "Quit" {
+		t.Fatalf("the quit alert's confirm button = %q, want Quit", w.pending.confirm)
 	}
 }

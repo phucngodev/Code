@@ -38,7 +38,31 @@ func TestConfirmCloseFollowsSetting(t *testing.T) {
 	}
 }
 
-func TestSurfaceRunning(t *testing.T) {
+// TestBeforeQuitFollowsSetting checks the quit gate follows the same
+// confirm-close-surface setting as closing a window, tab or workspace.
+func TestBeforeQuitFollowsSetting(t *testing.T) {
+	a := testApp(t)
+	w := &WindowState{app: a, store: model.NewStore[*Surface]()}
+	a.windows = append(a.windows, w)
+	w.newWorkspace("")
+
+	a.settings.Set(config.KeyConfirmClose, "always")
+	e := &mygo.QuitEvent{}
+	a.beforeQuit(e)
+	if !e.DefaultPrevented() {
+		t.Fatal("confirm-close-surface = always should stop a quit")
+	}
+	w.pending = nil
+
+	a.settings.Set(config.KeyConfirmClose, "false")
+	e = &mygo.QuitEvent{}
+	a.beforeQuit(e)
+	if e.DefaultPrevented() {
+		t.Fatal("confirm-close-surface = false should not stop a quit")
+	}
+}
+
+func TestSurfaceBusy(t *testing.T) {
 	if err := terminal.Load(); err != nil {
 		t.Skipf("libghostty not available: %v", err)
 	}
@@ -47,8 +71,8 @@ func TestSurfaceRunning(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer held.Close()
-	if s := (&Surface{id: "held", term: held}); !s.running() {
-		t.Fatal("a program still running should read as running")
+	if s := (&Surface{id: "held", term: held}); !s.busy() {
+		t.Fatal("a program still running should read as busy")
 	}
 
 	exited, err := terminal.New(terminal.Options{Command: []string{"/usr/bin/true"}})
@@ -59,8 +83,8 @@ func TestSurfaceRunning(t *testing.T) {
 	s := &Surface{id: "exited", term: exited}
 	select {
 	case <-exited.Done():
-		if s.running() {
-			t.Fatal("a program that ended should not read as running")
+		if s.busy() {
+			t.Fatal("a program that ended should not read as busy")
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("the program did not exit")
@@ -86,6 +110,18 @@ func TestConfirmDialogShowsAndCancels(t *testing.T) {
 	}
 	if ran {
 		t.Fatal("canceling should not run the close")
+	}
+}
+
+func TestQuitDialogShowsQuitButton(t *testing.T) {
+	w := testWindow(t)
+	w.newWorkspace("")
+	w.askChoice("Quit Code?", "A process is still running in a terminal.", "Quit", func() {})
+
+	tester := ui.NewTester(w.view, 900, 600)
+	tester.Frame()
+	if !tester.HasText("Quit Code?") || !tester.HasText("Quit") || !tester.HasText("Cancel") {
+		t.Fatal("the quit confirmation should show its title and buttons")
 	}
 }
 

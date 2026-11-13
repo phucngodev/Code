@@ -6,4 +6,3 @@ func childPIDs(int) []int           { return nil }
 func processDir(int) (string, bool) { return "", false }
 func processArgs(int) []string      { return nil }
 func foregroundPID(int) int         { return 0 }
-func commandRunning(int) bool       { return false }

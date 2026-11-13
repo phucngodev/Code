@@ -79,10 +79,9 @@ func RunCde(args []string, environ []string, stdin io.Reader, stdout, stderr io.
 	case "event":
 		event, err := eventFromArgs(args[1:], environment, now)
 		if err != nil {
-			debugf(stderr, environment, err.Error())
 			return 0
 		}
-		sendEvent(event, socket, environment, stderr)
+		sendEvent(event, socket, environment)
 		return 0
 	case "hook":
 		if len(args) < 2 {
@@ -90,18 +89,16 @@ func RunCde(args []string, environ []string, stdin io.Reader, stdout, stderr io.
 		}
 		adapter, ok := AdapterNamed(args[1])
 		if !ok {
-			debugf(stderr, environment, "no agent named "+args[1])
 			return 0
 		}
 		data, _ := io.ReadAll(io.LimitReader(stdin, maximumHookPayload))
 		payload, ok := ParseHookPayload(data, adapter.Name, environment, now)
 		if !ok {
-			debugf(stderr, environment, "hook input is not a JSON object")
 			return 0
 		}
 		if adapter.Translate != nil {
 			if event := adapter.Translate(payload); event != nil {
-				sendEvent(*event, socket, environment, stderr)
+				sendEvent(*event, socket, environment)
 			}
 		}
 		return 0
@@ -144,10 +141,9 @@ func RunCde(args []string, environ []string, stdin io.Reader, stdout, stderr io.
 	return 2
 }
 
-func sendEvent(event Event, socket string, environment map[string]string, stderr io.Writer) {
+func sendEvent(event Event, socket string, environment map[string]string) {
 	path := resolveSocket(socket, environment)
 	if path == "" {
-		debugf(stderr, environment, "no Code is running")
 		return
 	}
 	line, err := event.Line()
@@ -157,20 +153,16 @@ func sendEvent(event Event, socket string, environment map[string]string, stderr
 	if len(line) > maximumLineLength {
 		event.Detail = Summarize(event.Detail)
 		if line, err = event.Line(); err != nil || len(line) > maximumLineLength {
-			debugf(stderr, environment, "event is too long to send")
 			return
 		}
 	}
 	conn, err := net.DialTimeout("unix", path, 250*time.Millisecond)
 	if err != nil {
-		debugf(stderr, environment, "cannot connect to "+path)
 		return
 	}
 	defer conn.Close()
 	conn.SetWriteDeadline(time.Now().Add(250 * time.Millisecond))
-	if _, err := conn.Write(line); err != nil {
-		debugf(stderr, environment, "cannot write to "+path)
-	}
+	_, _ = conn.Write(line)
 }
 
 // resolveSocket is CODE_SOCKET, or the socket of the Code started last.
@@ -251,11 +243,4 @@ func environmentMap(environ []string) map[string]string {
 		}
 	}
 	return out
-}
-
-func debugf(stderr io.Writer, environment map[string]string, message string) {
-	if environment["CODE_DEBUG"] == "" {
-		return
-	}
-	fmt.Fprintf(stderr, "cde: %s\n", message)
 }

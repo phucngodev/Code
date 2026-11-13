@@ -173,16 +173,3 @@ func parseProcArgs(buf []byte) []string {
 	}
 	return args
 }
-
-// commandRunning reports whether a command is running in the terminal whose
-// shell has this PID, from the process group and the terminal's foreground
-// process group of its proc_bsdinfo. It reports true when the process cannot
-// be read, so a shell Code cannot inspect is confirmed like one running a
-// command, as Ghostty confirms when shell integration cannot tell.
-func commandRunning(pid int) bool {
-	info, ok := pidInfo(pid)
-	if !ok {
-		return true
-	}
-	return foregroundGroupRunning(int(info.PGID), int(info.TPGID))
-}

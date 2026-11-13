@@ -1,6 +1,7 @@
 package app
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/egoist/mygo"
@@ -10,7 +11,8 @@ import (
 )
 
 // TestEveryMenuAcceleratorIsListed keeps the Keyboard Shortcuts window and the
-// menus in step, as the project's shortcut rule requires.
+// menus in step, as the project's shortcut rule requires: every accelerator
+// Code binds has a row, and every row's accelerator is a menu or Code's own.
 func TestEveryMenuAcceleratorIsListed(t *testing.T) {
 	listed := map[string]bool{}
 	for _, section := range shortcutList {
@@ -23,13 +25,16 @@ func TestEveryMenuAcceleratorIsListed(t *testing.T) {
 			}
 		}
 	}
-	for _, accelerator := range menuAccelerators() {
-		if !listed[accelerator] {
-			t.Errorf("Code binds %q but no shortcut row lists it", accelerator)
+	// acc is the menu's own shortcuts: every field must have a row.
+	v := reflect.ValueOf(acc)
+	for i := 0; i < v.NumField(); i++ {
+		if a := v.Field(i).String(); a != "" && !listed[a] {
+			t.Errorf("Code binds %q but no shortcut row lists it", a)
 		}
 	}
-	// Role items take their keys from the OS (Cmd+H, Cmd+Q, …); they are not
-	// shortcuts Code adds and need no row of its own.
+	// Every plain menu item uses one of them, including the 1-9 workspace and
+	// tab ranges. Role items take their keys from the OS, so they are skipped;
+	// their Code-set accelerators are already covered by acc above.
 	menu := (&App{}).buildMenu()
 	var walk func([]*mygo.MenuItem)
 	walk = func(items []*mygo.MenuItem) {
