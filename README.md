@@ -23,6 +23,10 @@ and agent status. It is written in Go with mygo UI [MyGo](https://github.com/ego
 | Menus | Code / File / Edit / View / Workspace / Window / Help |
 | Keyboard shortcuts | listed in the Help window |
 
+On macOS, Code sets its own `AppleFontSmoothing` default to 0 before the first
+frame, so text is drawn thin rather than thickened by Core Text's font
+smoothing. Set `CODE_FONT_SMOOTHING=1` to keep the system's look.
+
 ## What is not ported yet
 
 These are deliberately out of this pass. Their Settings controls save a value,

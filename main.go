@@ -19,6 +19,8 @@ func main() {
 	if agent.IsCdeCommand(os.Args[1:]) {
 		os.Exit(agent.RunCde(os.Args[1:], os.Environ(), os.Stdin, os.Stdout, os.Stderr))
 	}
+	// Before the first frame, so MyGo draws text with the smoothing off.
+	configureFontSmoothing()
 
 	// A second launch hands its command line to the running instance and
 	// exits, so one instance owns the config and session files.
