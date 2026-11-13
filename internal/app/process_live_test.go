@@ -30,11 +30,18 @@ func waitUntil(cond func() bool, timeout time.Duration) bool {
 // returns the window and its surface.
 func liveShellWindow(t *testing.T) (*WindowState, *Surface) {
 	t.Helper()
+	return liveCommandWindow(t, "/bin/sh")
+}
+
+// liveCommandWindow starts a window whose terminal runs command directly,
+// rather than a shell, and returns the window and its surface.
+func liveCommandWindow(t *testing.T, command string) (*WindowState, *Surface) {
+	t.Helper()
 	if err := terminal.Load(); err != nil {
 		t.Skipf("libghostty not available: %v", err)
 	}
 	a := testApp(t)
-	if err := os.WriteFile(a.settings.Path(), []byte("command = /bin/sh\n"), 0o600); err != nil {
+	if err := os.WriteFile(a.settings.Path(), []byte("command = "+command+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	a.settings.Reload()
@@ -101,6 +108,17 @@ func TestBusyFollowsForegroundProcess(t *testing.T) {
 
 	waitBusy(t, s, false)
 	startCommand(t, s)
+}
+
+// TestBusyForADirectProgram checks a pane running its own program, not a
+// shell, reads as busy: the program is its own foreground process group, so
+// the foreground-group check alone would call it idle and close it without
+// asking.
+func TestBusyForADirectProgram(t *testing.T) {
+	_, s := liveCommandWindow(t, "/bin/sleep 30")
+	defer s.close()
+	shellOf(t, s)
+	waitBusy(t, s, true)
 }
 
 // TestProcessDirFollowsCd checks that the shell's working directory is read

@@ -50,11 +50,13 @@ func (s *Surface) LeafTitle() string { return s.title }
 // LeafDir is the terminal's working directory, or empty.
 func (s *Surface) LeafDir() string { return s.dir }
 
-// busy reports whether a command is running in this surface: the shell's
-// terminal has a foreground process group of its own means it sits at a
-// prompt, and another means a command is running. A surface whose shell
-// cannot be found is busy, as Ghostty confirms when shell integration cannot
-// tell.
+// busy reports whether a command is running in this surface. A pane that runs
+// a shell sits at a prompt when the shell is its own terminal's foreground
+// group and busy when another group is: a command is running. A pane that runs
+// a program of its own (an agent, say) has that program as its foreground
+// group, so the group alone cannot tell it from a prompt; it is busy while the
+// program runs. A surface whose shell cannot be found is busy, as Ghostty
+// confirms when shell integration cannot tell.
 func (s *Surface) busy() bool {
 	if s.term == nil || s.closed {
 		return false
@@ -66,6 +68,11 @@ func (s *Surface) busy() bool {
 	}
 	pid, ok := s.shellPID()
 	if !ok {
+		return true
+	}
+	// The tracked process is the shell only when the pane runs one; a program
+	// the pane runs itself is busy until it ends.
+	if !runsShell(pid) {
 		return true
 	}
 	return foregroundPID(pid) != 0

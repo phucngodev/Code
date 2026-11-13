@@ -226,3 +226,25 @@ func validProcessDir(path string) (string, bool) {
 	}
 	return path, true
 }
+
+// shellNames are the login shells a pane at a prompt runs. A tracked process
+// whose name is not one of these is a program the pane runs itself, so it is
+// busy while it runs rather than sitting at a prompt.
+var shellNames = map[string]bool{
+	"sh": true, "bash": true, "zsh": true, "fish": true, "dash": true,
+	"ash": true, "ksh": true, "mksh": true, "csh": true, "tcsh": true,
+	"nu": true, "pwsh": true, "elvish": true, "xonsh": true, "oil": true,
+	"osh": true, "yash": true,
+}
+
+// runsShell reports whether the process is a shell, whose foreground group
+// tells whether it sits at a prompt. A name that cannot be read is not a
+// shell, so the pane is confirmed rather than closed without asking.
+func runsShell(pid int) bool {
+	args := processArgs(pid)
+	if len(args) == 0 {
+		return false
+	}
+	name := strings.TrimPrefix(filepath.Base(args[0]), "-")
+	return shellNames[name] || name == strings.TrimPrefix(filepath.Base(loginShell()), "-")
+}
