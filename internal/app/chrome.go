@@ -6,6 +6,8 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
+
+	"github.com/phucngodev/code/internal/config"
 )
 
 // rebuildChromeThemes reads the terminal settings once and derives the window
@@ -16,7 +18,41 @@ func (a *App) rebuildChromeThemes() {
 	a.terminalCfg = a.settings.Terminal(a.paths.Themes)
 	a.chromeLight = chromeTheme(a.terminalCfg.Light)
 	a.chromeDark = chromeTheme(a.terminalCfg.Dark)
+	hide := a.hideScrollbar()
+	a.termLight = terminalChrome(a.chromeLight, hide)
+	a.termDark = terminalChrome(a.chromeDark, hide)
 	a.syncAppAppearance()
+}
+
+// hideScrollbar reports whether the terminals hide their scroll bar, under
+// Ghostty's scrollbar = never.
+func (a *App) hideScrollbar() bool {
+	return a.settings.String(config.KeyScrollbar, "system") == "never"
+}
+
+// terminalChrome is the theme the terminal panes draw with. Ghostty's
+// scrollbar = never hides the bar by drawing it in a transparent color, since
+// the plugin colors its bar from the theme; TrackWidth shrinks with it so the
+// plugin does not take the pointer over an invisible strip.
+func terminalChrome(base *ui.Theme, hide bool) *ui.Theme {
+	if !hide || base == nil {
+		return base
+	}
+	t := *base
+	t.Scrollbar = ui.Transparent
+	t.ScrollbarStyle.TrackWidth = 1
+	return &t
+}
+
+// currentTerminalChrome is the terminal theme for the window's appearance.
+func (a *App) currentTerminalChrome(dark bool) *ui.Theme {
+	if dark && a.termDark != nil {
+		return a.termDark
+	}
+	if a.termLight != nil {
+		return a.termLight
+	}
+	return a.currentChrome(dark)
 }
 
 // syncAppAppearance makes the app's native chrome (the Settings and Shortcuts

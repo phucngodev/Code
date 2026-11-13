@@ -64,6 +64,7 @@ const (
 	KeySearchSelBackground = "search-selected-background"
 	KeySearchSelForeground = "search-selected-foreground"
 	KeyScrollMultiplier    = "mouse-scroll-multiplier"
+	KeyScrollbar           = "scrollbar"
 	KeyRightClickAction    = "right-click-action"
 	KeyClipboardWrite      = "clipboard-write"
 	KeyClipboardRead       = "clipboard-read"
@@ -99,7 +100,7 @@ var supportedKeys = map[string]bool{
 	KeySearchSelBackground: true, KeySearchSelForeground: true,
 	KeyCursorStyle: true, KeyCursorBlink: true,
 	KeyBackgroundOpacity: true, KeyUnfocusedSplitOpacity: true,
-	KeyScrollback: true, KeyScrollMultiplier: true,
+	KeyScrollback: true, KeyScrollMultiplier: true, KeyScrollbar: true,
 	KeyCommand: true, "keybind": true,
 	KeyCopyOnSelect: true, KeyRightClickAction: true,
 	KeyClipboardWrite: true, KeyClipboardRead: true,

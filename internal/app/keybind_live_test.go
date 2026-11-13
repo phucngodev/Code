@@ -8,6 +8,7 @@ import (
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/phucngodev/code/internal/config"
 	"github.com/phucngodev/code/internal/model"
 )
 
@@ -44,6 +45,23 @@ func TestLiveNavKeybind(t *testing.T) {
 	tester.Frame()
 	if got := w.focusedSurface().id; got == before {
 		t.Fatal("command+shift+h did not move the focus")
+	}
+}
+
+// TestLiveNavWithScrollbarNever checks a pane keeps its focus and keys when its
+// view is wrapped in the scoped theme that hides the scroll bar.
+func TestLiveNavWithScrollbarNever(t *testing.T) {
+	w := liveWindow(t, nil)
+	w.app.termLight = terminalChrome(ui.LightTheme(), true)
+	w.app.termDark = terminalChrome(ui.DarkTheme(), true)
+	w.app.settings.Set(config.KeyScrollbar, "never")
+	before := w.focusedSurface().id
+	tester := ui.NewTester(w.view, 900, 600)
+	tester.Frame()
+	tester.Key(ui.Cmd|ui.Alt, ui.KeyLeft)
+	tester.Frame()
+	if got := w.focusedSurface().id; got == before {
+		t.Fatal("navigation did not move the focus with the scoped terminal theme")
 	}
 }
 

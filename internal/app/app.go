@@ -94,6 +94,10 @@ type App struct {
 	// the theme files every frame.
 	chromeLight *ui.Theme
 	chromeDark  *ui.Theme
+	// termLight and termDark are the chrome themes the terminal panes draw
+	// with: the chrome themes, their scroll bar hidden under scrollbar = never.
+	termLight   *ui.Theme
+	termDark    *ui.Theme
 	terminalCfg config.TerminalConfig
 }
 

@@ -145,6 +145,37 @@ func TestConfirmDialogCloseRuns(t *testing.T) {
 	}
 }
 
+func TestTerminalChromeHidesScrollbar(t *testing.T) {
+	base := ui.DarkTheme()
+	if terminalChrome(base, false) != base {
+		t.Fatal("scrollbar shown should use the chrome theme itself")
+	}
+	hidden := terminalChrome(base, true)
+	if hidden == base {
+		t.Fatal("scrollbar never should clone the theme")
+	}
+	if hidden.Scrollbar != ui.Transparent || hidden.ScrollbarStyle.TrackWidth != 1 {
+		t.Fatalf("hidden theme = %+v", hidden.ScrollbarStyle)
+	}
+	if style := (ui.ScrollbarStyle{}).Resolve(hidden); style.Thumb.A != 0 {
+		t.Fatalf("resolved thumb alpha = %d, want 0", style.Thumb.A)
+	}
+	if base.Scrollbar == ui.Transparent {
+		t.Fatal("the base theme must keep its scroll bar")
+	}
+}
+
+func TestHideScrollbarFollowsSetting(t *testing.T) {
+	a := testApp(t)
+	if a.hideScrollbar() {
+		t.Fatal("the default should show the bar")
+	}
+	a.settings.Set(config.KeyScrollbar, "never")
+	if !a.hideScrollbar() {
+		t.Fatal("scrollbar = never should hide the bar")
+	}
+}
+
 func TestAgentStoreFollowsTerminalOwners(t *testing.T) {
 	a := testApp(t)
 	a.wireAgentStore()

@@ -387,33 +387,15 @@ func (w *WindowState) buildSurface(c *ui.Context, tab *model.Tab[*Surface], s *S
 		pane = pane.Drag(s)
 	}
 	pane.Children(func() {
-		// Key the terminal before it builds, so the terminal's own view reads
-		// the focus while it builds: Element.Key runs after View has built,
-		// leaving the element's built identity different from the focused
-		// one, and its cursor would draw unfocused and never blink.
-		c.Key(s.id)
-		el := terminal.View(c, s.term).Bind(&s.handle).Fill()
-		if dragging {
-			term := s.term
-			el = el.HitTest(func(x, y float32, r ui.Rect) bool {
-				link, _, at := term.HoveredLink()
-				return link != "" && at.Contains(x, y)
+		if w.app.hideScrollbar() {
+			// The plugin colors its scroll bar from the theme, so a theme with
+			// a transparent one hides it (Ghostty's scrollbar = never).
+			ui.Themed(c, w.app.currentTerminalChrome(c.Theme().Dark)).Fill().Children(func() {
+				w.buildTerminal(c, tab, s, dragging, split)
 			})
+			return
 		}
-		if s.wantFocus {
-			// Focus, not AutoFocus: a pane that already exists is not born
-			// this frame, so AutoFocus would leave the keyboard where it was
-			// when navigation moves focus to it. wantFocus is cleared now, so
-			// this only claims the focus for the frame it was asked for.
-			el = el.Focus()
-			s.wantFocus = false
-		}
-		if paneDimmed(tab, s, split) {
-			el = el.Opacity(float32(w.app.settings.Float(config.KeyUnfocusedSplitOpacity, 0.7)))
-		}
-		if s.handle.Focused(c) && c.WindowActive() {
-			w.noteFocused(s)
-		}
+		w.buildTerminal(c, tab, s, dragging, split)
 	})
 	if dragged, ok := ui.Drop[*Surface](pane); ok && dragged != s {
 		split, dir := paneDropAt(pane)
@@ -421,6 +403,38 @@ func (w *WindowState) buildSurface(c *ui.Context, tab *model.Tab[*Surface], s *S
 	}
 	if _, over := ui.DragOver[*Surface](pane); over {
 		pane.Border(2, t.Accent)
+	}
+}
+
+// buildTerminal builds the terminal element of a pane, keyed and focused as
+// the pane needs.
+func (w *WindowState) buildTerminal(c *ui.Context, tab *model.Tab[*Surface], s *Surface, dragging, split bool) {
+	// Key the terminal before it builds, so the terminal's own view reads the
+	// focus while it builds: Element.Key runs after View has built, leaving the
+	// element's built identity different from the focused one, and its cursor
+	// would draw unfocused and never blink.
+	c.Key(s.id)
+	el := terminal.View(c, s.term).Bind(&s.handle).Fill()
+	if dragging {
+		term := s.term
+		el = el.HitTest(func(x, y float32, r ui.Rect) bool {
+			link, _, at := term.HoveredLink()
+			return link != "" && at.Contains(x, y)
+		})
+	}
+	if s.wantFocus {
+		// Focus, not AutoFocus: a pane that already exists is not born this
+		// frame, so AutoFocus would leave the keyboard where it was when
+		// navigation moves focus to it. wantFocus is cleared now, so this only
+		// claims the focus for the frame it was asked for.
+		el = el.Focus()
+		s.wantFocus = false
+	}
+	if paneDimmed(tab, s, split) {
+		el = el.Opacity(float32(w.app.settings.Float(config.KeyUnfocusedSplitOpacity, 0.7)))
+	}
+	if s.handle.Focused(c) && c.WindowActive() {
+		w.noteFocused(s)
 	}
 }
 
