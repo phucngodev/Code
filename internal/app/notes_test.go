@@ -1,13 +1,17 @@
 package app
 
 import (
+	"image"
+	"image/png"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
 	"github.com/phucngodev/code/internal/model"
+	"github.com/phucngodev/code/internal/notes/editor"
 )
 
 // TestNotesViewRenders checks a notes pane is its own layout kind and builds
@@ -137,5 +141,47 @@ func TestClosingNotesReleasesIt(t *testing.T) {
 	}
 	if !app.Closed() {
 		t.Fatal("closing should close the notes app")
+	}
+}
+
+// TestClosingNotesFreesImages checks a picture a note showed is dropped from
+// the shared cache when the notes tab closes.
+func TestClosingNotesFreesImages(t *testing.T) {
+	dir := t.TempDir()
+	img := image.NewRGBA(image.Rect(0, 0, 60, 40))
+	pf, err := os.Create(filepath.Join(dir, "p.png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := png.Encode(pf, img); err != nil {
+		t.Fatal(err)
+	}
+	pf.Close()
+	note := filepath.Join(dir, "n.md")
+	if err := os.WriteFile(note, []byte("# N\n\n![p](p.png)\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	w := testWindow(t)
+	w.newWorkspace("")
+	w.openNotes(dir, w.store.Selected())
+	s := w.focusedSurface()
+	ui.NewTester(w.view, 900, 600).Frame()
+	if s.notes == nil {
+		t.Fatal("the notes app should have built")
+	}
+	s.notes.app.OpenNote(note)
+	ui.NewTester(w.view, 900, 600).Frame()
+	// Give the decode goroutine a moment.
+	for i := 0; i < 20 && editor.ImageCacheCount() == 0; i++ {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if editor.ImageCacheCount() == 0 {
+		t.Skip("the image did not decode in time")
+	}
+
+	w.closeTabNow(w.selectedTab())
+	if got := editor.ImageCacheCount(); got != 0 {
+		t.Fatalf("%d pictures still cached after close, want 0", got)
 	}
 }

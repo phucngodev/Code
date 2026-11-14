@@ -102,3 +102,53 @@ func TestTwoLargeImagesDoNotThrash(t *testing.T) {
 		t.Fatalf("the two images were decoded %d times, want 2", calls)
 	}
 }
+
+// TestClearImageCacheDropsPictures checks the cache is emptied, so closing a
+// notes view lets its pictures be collected.
+func TestClearImageCacheDropsPictures(t *testing.T) {
+	images.Lock()
+	images.m["x"] = &cachedImage{}
+	images.sizes["x"] = [2]float32{1, 1}
+	images.pixels = 100
+	images.Unlock()
+
+	ClearImageCache()
+
+	images.Lock()
+	defer images.Unlock()
+	if len(images.m) != 0 || len(images.sizes) != 0 || images.pixels != 0 {
+		t.Fatalf("cache not cleared: %d entries, %d sizes, %d pixels", len(images.m), len(images.sizes), images.pixels)
+	}
+}
+
+// TestDecodeCapsLongSide checks a large picture is decoded no larger than
+// maxImagePixels on its long side, while still reporting its real size.
+func TestDecodeCapsLongSide(t *testing.T) {
+	dir := t.TempDir()
+	img := image.NewRGBA(image.Rect(0, 0, 3000, 2000))
+	for i := range img.Pix {
+		img.Pix[i] = 120
+	}
+	path := filepath.Join(dir, "big.png")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := png.Encode(f, img); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+
+	src, w, h := decodeImageFile(path)
+	if w != 3000 || h != 2000 {
+		t.Fatalf("reported size %vx%v, want 3000x2000", w, h)
+	}
+	b, ok := src.(*ui.Bitmap)
+	if !ok {
+		t.Fatalf("decoded to %T, want *ui.Bitmap", src)
+	}
+	bw, bh := b.Size()
+	if bw > maxImagePixels || bh > maxImagePixels {
+		t.Fatalf("decoded %dx%d, want a long side <= %d", bw, bh, maxImagePixels)
+	}
+}

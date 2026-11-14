@@ -97,7 +97,10 @@ type cachedImage struct {
 	used int
 }
 
-const maxImagePixels = 2400
+// maxImagePixels is the longest side a decoded picture keeps. A note draws a
+// picture at most 560 px tall, so a preview needs no more than about twice
+// that; keeping it small keeps far less in memory per image.
+const maxImagePixels = 800
 const imageBudget = 12 * 1024 * 1024 // decoded pixels
 
 // cachedPixels is how many pixels a decoded picture holds after being scaled
@@ -727,4 +730,12 @@ func itoa(n int) string {
 		b[i] = '-'
 	}
 	return string(b[i:])
+}
+
+// ImageCacheCount is how many pictures the shared cache holds. It is for a
+// test to check that closing a view releases them.
+func ImageCacheCount() int {
+	images.Lock()
+	defer images.Unlock()
+	return len(images.m)
 }
