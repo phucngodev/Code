@@ -98,7 +98,18 @@ type cachedImage struct {
 }
 
 const maxImagePixels = 2400
-const imageBudget = 12 * 1024 * 1024 // pixels
+const imageBudget = 12 * 1024 * 1024 // decoded pixels
+
+// cachedPixels is how many pixels a decoded picture holds after being scaled
+// to maxImagePixels. The budget counts this, not the file's size, so a picture
+// that is scaled down costs what it really takes.
+func cachedPixels(w, h float32) int {
+	if longer := max(w, h); longer > maxImagePixels {
+		s := maxImagePixels / longer
+		w, h = w*s, h*s
+	}
+	return int(w) * int(h)
+}
 
 // ClearImageCache drops the decoded pictures, so closing a notes view releases
 // what its images held instead of keeping them until the budget evicts them.
@@ -145,8 +156,7 @@ func loadImage(src, notePath string, done func()) (ui.ImageSource, float32, floa
 		c.used = images.clock
 		return c.img, c.w, c.h
 	}
-	if waiting, ok := images.loading[key]; ok {
-		images.loading[key] = append(waiting, done)
+	if _, ok := images.loading[key]; ok {
 		return nil, 0, 0
 	}
 	images.loading[key] = []func(){done}
@@ -158,7 +168,10 @@ func loadImage(src, notePath string, done func()) (ui.ImageSource, float32, floa
 		if img != nil {
 			images.clock++
 			images.m[key] = &cachedImage{img, w, h, images.clock}
-			images.pixels += int(w * h)
+			// Count the decoded size, not the file's: a scaled picture holds
+			// far fewer pixels, so two large pictures no longer evict each
+			// other and blink.
+			images.pixels += cachedPixels(w, h)
 			for images.pixels > imageBudget && len(images.m) > 1 {
 				oldest, k := 0, ""
 				for kk, c := range images.m {
@@ -166,7 +179,7 @@ func loadImage(src, notePath string, done func()) (ui.ImageSource, float32, floa
 						oldest, k = c.used, kk
 					}
 				}
-				images.pixels -= int(images.m[k].w * images.m[k].h)
+				images.pixels -= cachedPixels(images.m[k].w, images.m[k].h)
 				delete(images.m, k)
 			}
 		}
@@ -194,8 +207,10 @@ func readImage(path string) ([]byte, error) {
 }
 
 // decodeImage decodes an image no larger than it is ever drawn, keeping
-// its size.
-func decodeImage(path string) (ui.ImageSource, float32, float32) {
+// its size. It is a variable so a test can count the reads.
+var decodeImage = decodeImageFile
+
+func decodeImageFile(path string) (ui.ImageSource, float32, float32) {
 	data, err := readImage(path)
 	if err != nil {
 		return nil, 0, 0
