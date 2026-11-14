@@ -102,6 +102,8 @@ func (a *App) buildMenu() *mygo.Menu {
 		item("Toggle Sidebar", acc.toggleSidebar, func(w *WindowState) { w.toggleSidebar() }),
 		item("Go to…", acc.goTo, func(w *WindowState) { w.openPalette() }),
 		item("Zoom Pane", acc.zoomPane, func(w *WindowState) { w.toggleZoom() }),
+		item("Drawing Canvas", "", func(w *WindowState) { w.toggleBoard() }),
+		item("Notes", "", func(w *WindowState) { w.toggleNotes() }),
 		mygo.Separator(),
 		windowItem("Enter Full Screen", "", func(win *mygo.Window) { win.SetFullScreen(!win.IsFullScreen()) }),
 	}

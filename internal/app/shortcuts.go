@@ -162,6 +162,11 @@ var shortcutList = []shortcutSection{
 		{"Smaller text", "CmdOrCtrl+Minus", nil, nil, nil},
 		{"Reset text size", "CmdOrCtrl+0", nil, nil, nil},
 	}},
+	{"Notes", []shortcut{
+		{"Open a note by name", "", []string{"⌘", "O"}, []string{"Ctrl", "O"}, nil},
+		{"Search notes", "", []string{"⇧", "⌘", "F"}, []string{"Ctrl", "Alt", "F"}, nil},
+		{"Run a notes command", "", []string{"⇧", "⌘", "P"}, []string{"Ctrl", "Alt", "P"}, nil},
+	}},
 	{"Settings", []shortcut{
 		{"Open Settings", acc.settings, nil, nil, nil},
 		{"Reload configuration", acc.reloadConfig, nil, nil, nil},

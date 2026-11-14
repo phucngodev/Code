@@ -171,6 +171,8 @@ func (w *WindowState) buildTopBar(c *ui.Context) {
 		w.iconSVGButton(c, folderPlusIcon, "New workspace", titleBarIconSize, func() { w.newWorkspace("") })
 		w.buildBell(c)
 		w.iconSVGButton(c, gearIcon, "Settings", titleBarIconSize, func() { w.app.ShowSettings() })
+		w.iconSVGButton(c, pencilIcon, "Drawing", titleBarIconSize, func() { w.toggleBoard() })
+		w.iconSVGButton(c, notebookIcon, "Notes", titleBarIconSize, func() { w.toggleNotes() })
 		ui.Box(c).Width(6)
 		ws := w.store.Selected()
 		if ws != nil {
@@ -367,6 +369,14 @@ func paneDimmed(tab *model.Tab[*Surface], s *Surface, split bool) bool {
 
 func (w *WindowState) buildSurface(c *ui.Context, tab *model.Tab[*Surface], s *Surface, split bool) {
 	s.start()
+	switch s.kind {
+	case "canvas":
+		w.buildBoard(c, s)
+		return
+	case "notes":
+		w.buildNotes(c, s)
+		return
+	}
 	if s.term == nil {
 		msg := "Could not start the terminal."
 		if s.startErr != nil {

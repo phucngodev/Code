@@ -24,6 +24,11 @@ type Surface struct {
 	owner  *WindowState
 	// command runs in place of the shell, for a session Code reopens.
 	command string
+	// kind is "" for a terminal, "canvas" for a drawing canvas or "notes"
+	// for a Markdown notes view.
+	kind  string
+	board *boardCanvas
+	notes *notesCanvas
 
 	term     *terminal.Terminal
 	startErr error
@@ -44,11 +49,32 @@ type Surface struct {
 // LeafID is stable across a relaunch, since agents are told it.
 func (s *Surface) LeafID() string { return s.id }
 
-// LeafTitle is the terminal's own title, or empty.
-func (s *Surface) LeafTitle() string { return s.title }
+// LeafTitle is the terminal's own title, a canvas says Drawing, a notes
+// view says Notes.
+func (s *Surface) LeafTitle() string {
+	switch s.kind {
+	case "canvas":
+		return "Drawing"
+	case "notes":
+		return "Notes"
+	}
+	return s.title
+}
 
 // LeafDir is the terminal's working directory, or empty.
 func (s *Surface) LeafDir() string { return s.dir }
+
+// LeafKind is the pane's kind: "" for a terminal, "canvas" or "notes".
+func (s *Surface) LeafKind() string { return s.kind }
+
+// paneKind maps a saved layout kind to a surface's kind: a terminal, the
+// default, is the empty kind.
+func paneKind(kind string) string {
+	if kind == "terminal" {
+		return ""
+	}
+	return kind
+}
 
 // busy reports whether a command is running in this surface. A pane that runs
 // a shell sits at a prompt when the shell is its own terminal's foreground
@@ -58,7 +84,7 @@ func (s *Surface) LeafDir() string { return s.dir }
 // program runs. A surface whose shell cannot be found is busy, as Ghostty
 // confirms when shell integration cannot tell.
 func (s *Surface) busy() bool {
-	if s.term == nil || s.closed {
+	if s.kind != "" || s.term == nil || s.closed {
 		return false
 	}
 	select {
@@ -91,6 +117,11 @@ func (s *Surface) setDir(dir string) {
 // restored session does not run a shell per pane before it is looked at.
 func (s *Surface) start() {
 	if s.term != nil || s.started || s.closed || s.owner == nil {
+		return
+	}
+	if s.kind != "" {
+		// A canvas or notes view has nothing to launch; it draws instead.
+		s.started = true
 		return
 	}
 	s.started = true
@@ -194,6 +225,16 @@ func (s *Surface) close() {
 		return
 	}
 	s.closed = true
+	if s.board != nil {
+		s.board.save()
+		s.board.close()
+		s.board = nil
+	}
+	if s.notes != nil {
+		s.notes.save()
+		s.notes.close()
+		s.notes = nil
+	}
 	if s.term != nil {
 		if err := s.term.Close(); err != nil {
 			log.Printf("codeterm: could not close terminal %s: %v", s.id, err)

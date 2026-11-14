@@ -39,8 +39,10 @@ type TabSession struct {
 	ZoomedPane *int    `json:"zoomedPane,omitempty"`
 }
 
-// Layout is a pane tree as saved: one terminal, or a split of two layouts.
+// Layout is a pane tree as saved: one terminal, a drawing canvas, a notes
+// view, or a split of two layouts.
 type Layout struct {
+	// Kind is "terminal", "canvas", "notes" or "split".
 	Kind string `json:"kind"`
 	ID   string `json:"id,omitempty"`
 	Dir  string `json:"workingDirectory,omitempty"`
@@ -64,7 +66,7 @@ type Frame struct {
 // LayoutFrom snapshots a pane node.
 func LayoutFrom[L PaneLeaf](n *Node[L]) *Layout {
 	if n.HasLeaf {
-		return &Layout{Kind: "terminal", ID: n.Leaf.LeafID(), Dir: n.Leaf.LeafDir()}
+		return &Layout{Kind: leafKind(n.Leaf), ID: n.Leaf.LeafID(), Dir: n.Leaf.LeafDir()}
 	}
 	return &Layout{
 		Kind:   "split",
@@ -75,13 +77,21 @@ func LayoutFrom[L PaneLeaf](n *Node[L]) *Layout {
 	}
 }
 
-// Build rebuilds a pane node, asking makeLeaf for each terminal.
-func (l *Layout) Build[L PaneLeaf](makeLeaf func(id, dir string) L) *Node[L] {
+// leafKind is a pane's saved kind, a terminal when it names none.
+func leafKind[L PaneLeaf](l L) string {
+	if k := l.LeafKind(); k != "" {
+		return k
+	}
+	return "terminal"
+}
+
+// Build rebuilds a pane node, asking makeLeaf for each pane.
+func (l *Layout) Build[L PaneLeaf](makeLeaf func(id, dir, kind string) L) *Node[L] {
 	if l == nil {
 		return nil
 	}
-	if l.Kind == "terminal" || l.First == nil || l.Second == nil {
-		return NewLeaf(makeLeaf(l.ID, l.Dir))
+	if l.Kind != "split" || l.First == nil || l.Second == nil {
+		return NewLeaf(makeLeaf(l.ID, l.Dir, l.Kind))
 	}
 	pct := float32(l.Ratio * 100)
 	return NewSplit(l.Axis, l.First.Build(makeLeaf), l.Second.Build(makeLeaf), pct)
@@ -128,21 +138,21 @@ func (s *Store[L]) Snapshot(frame *Frame) WindowSession {
 	return WindowSession{Workspaces: ws, Selected: selected, Frame: frame}
 }
 
-// Restore rebuilds a window's workspaces. makeLeaf recreates a terminal from
-// its saved id and working directory, given its workspace id. A workspace
+// Restore rebuilds a window's workspaces. makeLeaf recreates a pane from its
+// saved id, working directory and kind, given its workspace id. A workspace
 // whose tabs were all lost is skipped.
-func (s *Store[L]) Restore(session WindowSession, newID func() string, makeLeaf func(id, dir, workspace string) L) {
+func (s *Store[L]) Restore(session WindowSession, newID func() string, makeLeaf func(id, dir, workspace, kind string) L) {
 	s.Batch(func() {
 		var selected *Workspace[L]
 		for wi, saved := range session.Workspaces {
 			w := s.AddWorkspace(saved.ID, saved.CustomName, accentOr(saved.Accent, wi))
 			var selectedTab *Tab[L]
 			for ti, tab := range saved.Tabs {
-				root := tab.Layout.Build(func(id, dir string) L {
+				root := tab.Layout.Build(func(id, dir, kind string) L {
 					if id == "" {
 						id = newID()
 					}
-					return makeLeaf(id, dir, w.ID)
+					return makeLeaf(id, dir, w.ID, kind)
 				})
 				if root == nil {
 					continue

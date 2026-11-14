@@ -271,8 +271,10 @@ func (a *App) newWindow(frame *model.WindowSession) *WindowState {
 	})
 
 	if frame != nil {
-		store.Restore(*frame, newID, func(id, dir, workspace string) *Surface {
-			return w.newSurface(id, dir, workspace)
+		store.Restore(*frame, newID, func(id, dir, workspace, kind string) *Surface {
+			s := w.newSurface(id, dir, workspace)
+			s.kind = paneKind(kind)
+			return s
 		})
 		// A terminal opened to resume an agent keeps that command after a
 		// relaunch, so its pane runs the agent again rather than a plain shell.

@@ -8,11 +8,34 @@ import (
 
 type testLeaf struct {
 	id, title, dir string
+	kind           string
 }
 
 func (l *testLeaf) LeafID() string    { return l.id }
 func (l *testLeaf) LeafTitle() string { return l.title }
 func (l *testLeaf) LeafDir() string   { return l.dir }
+func (l *testLeaf) LeafKind() string  { return l.kind }
+
+// TestCanvasTabRoundTrips checks a pane's kind survives a session save and
+// restore, so a drawing tab comes back as a drawing tab.
+func TestCanvasTabRoundTrips(t *testing.T) {
+	s := NewStore[*testLeaf]()
+	s.AddWorkspace("ws", nil, 0).Add(NewTab("tab", &testLeaf{id: "c", kind: "canvas"}))
+
+	snapshot := s.Snapshot(nil)
+	if snapshot.Workspaces[0].Tabs[0].Layout.Kind != "canvas" {
+		t.Fatal("the canvas kind should be saved")
+	}
+
+	restored := NewStore[*testLeaf]()
+	restored.Restore(snapshot, func() string { return "new" }, func(id, dir, workspace, kind string) *testLeaf {
+		return &testLeaf{id: id, kind: kind}
+	})
+	leaves := restored.Panes()
+	if len(leaves) != 1 || leaves[0].LeafKind() != "canvas" {
+		t.Fatalf("restored leaves = %+v, want one canvas", leaves)
+	}
+}
 
 func TestTreeSplitAndRemove(t *testing.T) {
 	a := &testLeaf{id: "a"}
@@ -176,7 +199,7 @@ func TestSessionRoundTrip(t *testing.T) {
 	}
 
 	restored := NewStore[*testLeaf]()
-	restored.Restore(snapshot, func() string { return "new-id" }, func(id, dir, workspace string) *testLeaf {
+	restored.Restore(snapshot, func() string { return "new-id" }, func(id, dir, workspace, kind string) *testLeaf {
 		return &testLeaf{id: id, dir: dir}
 	})
 	if got := len(restored.Panes()); got != 2 {

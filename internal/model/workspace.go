@@ -21,6 +21,10 @@ type Leaf interface {
 	LeafTitle() string
 	// LeafDir is the terminal's working directory, or empty.
 	LeafDir() string
+	// LeafKind is the pane's kind: "" for a terminal, "canvas" for a
+	// drawing canvas, "notes" for a Markdown notes view, so each comes
+	// back as itself on restore.
+	LeafKind() string
 }
 
 // Tab is one tab's split layout and the pane that has its focus.

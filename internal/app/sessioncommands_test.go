@@ -44,8 +44,10 @@ func TestLayoutCommandsRoundTrip(t *testing.T) {
 	}
 
 	restored := &WindowState{app: testApp(t), store: model.NewStore[*Surface]()}
-	restored.store.Restore(saved, newID, func(id, dir, workspace string) *Surface {
-		return restored.newSurface(id, dir, workspace)
+	restored.store.Restore(saved, newID, func(id, dir, workspace, kind string) *Surface {
+		s := restored.newSurface(id, dir, workspace)
+		s.kind = paneKind(kind)
+		return s
 	})
 	for id, command := range layoutCommands(&saved) {
 		if surface := restored.surfaceByID(id); surface != nil {

@@ -51,6 +51,12 @@ var plusIconSVG []byte
 //go:embed icons/folder-plus.svg
 var folderPlusIconSVG []byte
 
+//go:embed icons/pencil.svg
+var pencilIconSVG []byte
+
+//go:embed icons/notebook.svg
+var notebookIconSVG []byte
+
 var (
 	terminalIcon   = ui.MustParseSVG(terminalIconSVG)
 	sparkleIcon    = ui.MustParseSVG(sparkleIconSVG)
@@ -67,4 +73,6 @@ var (
 	sidebarIcon    = ui.MustParseSVG(sidebarIconSVG)
 	plusIcon       = ui.MustParseSVG(plusIconSVG)
 	folderPlusIcon = ui.MustParseSVG(folderPlusIconSVG)
+	pencilIcon     = ui.MustParseSVG(pencilIconSVG)
+	notebookIcon   = ui.MustParseSVG(notebookIconSVG)
 )
