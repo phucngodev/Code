@@ -26,6 +26,10 @@ type Host interface {
 	Window() *mygo.Window
 	// Update runs fn on the main thread and draws a frame after it.
 	Update(fn func())
+	// OpenFolder asks for a folder and shows its notes in this view.
+	OpenFolder()
+	// OpenFile asks for a Markdown file, from any folder, and shows it.
+	OpenFile()
 }
 
 // App is the notes view: a workspace of Markdown files and its editor.
@@ -316,6 +320,12 @@ func (a *App) tabBar(c *ui.Context, th theme.Theme) {
 		if iconButton(c, "newnote", iconNewNote, "New Note", th).Clicked() {
 			a.post(a.NewNote)
 		}
+		if iconButton(c, "openfolder", iconFolder, "Open Folder", th).Clicked() {
+			a.host.OpenFolder()
+		}
+		if iconButton(c, "openfile", iconFile, "Open File", th).Clicked() {
+			a.host.OpenFile()
+		}
 		if iconButton(c, "commands", iconCommand, "Commands", th).Clicked() {
 			a.post(func() { a.palette.show(modeCommands, "") })
 		}
@@ -332,19 +342,63 @@ func (a *App) toolbar(c *ui.Context, th theme.Theme) {
 		return
 	}
 	ui.Row(c.Key("toolbar")).Height(36).Padding(0, 10).Gap(2).AlignItems(ui.Center).Children(func() {
+		// A growing spacer pushes the buttons to the right edge.
+		ui.Box(c).Grow(1)
 		a.toolButton(c, "bold", "B", "toggleBold", ed, th)
 		a.toolButton(c, "italic", "I", "toggleItalic", ed, th)
 		a.toolButton(c, "strike", "S", "toggleStrikethrough", ed, th)
 		a.toolButton(c, "mark", "H", "toggleHighlight", ed, th)
 		a.toolButton(c, "code", "</>", "toggleInlineCode", ed, th)
 		a.toolButton(c, "link", "Link", "insertLink", ed, th)
+		a.imageButton(c, "Image", th)
 		ui.Box(c).Width(8)
 		a.toolButton(c, "quote", "Quote", "toggleQuote", ed, th)
 		a.toolButton(c, "bullet", "• List", "toggleBulletList", ed, th)
 		a.toolButton(c, "number", "1. List", "toggleNumberedList", ed, th)
 		a.toolButton(c, "task", "Task", "toggleTaskList", ed, th)
-		a.toolButton(c, "block", "Code Block", "toggleCodeBlock", ed, th)
+		a.toolButton(c, "block", "Code", "toggleCodeBlock", ed, th)
 	})
+}
+
+// imageButton inserts a picture at the caret, chosen from a file picker.
+func (a *App) imageButton(c *ui.Context, label string, th theme.Theme) {
+	b := ui.Box(c.Key("tool-image")).Height(26).Padding(0, 8).Radius(6).Center().FocusRing(false).Cursor(ui.CursorDefault)
+	if b.Hovered() {
+		b.Background(th.Text.Alpha(0.06))
+	}
+	if b.Clicked() {
+		a.insertImage()
+	}
+	b.Children(func() { ui.Text(c, label).FontSize(12.5).TextColor(th.Text) })
+}
+
+// insertImage asks for a picture and puts it in the note at the caret.
+func (a *App) insertImage() {
+	win := a.host.Window()
+	go func() {
+		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
+			Parent: win, Title: "Insert Image",
+			Filters: []mygo.FileFilter{{Name: "Images", Extensions: []string{"png", "jpg", "jpeg", "gif", "webp", "svg"}}},
+		})
+		if err != nil || len(paths) == 0 {
+			return
+		}
+		a.post(func() {
+			if ed := a.editor(); ed != nil {
+				start, end := ed.Selection()
+				ed.InsertFiles(paths, start, end)
+			}
+		})
+	}()
+}
+
+// relativePath is to as it reads from from, with slashes.
+func relativePath(from, to string) string {
+	r, err := filepath.Rel(from, to)
+	if err != nil {
+		return to
+	}
+	return filepath.ToSlash(r)
 }
 
 func (a *App) toolButton(c *ui.Context, key, label, id string, ed *editor.Editor, th theme.Theme) {
@@ -425,12 +479,28 @@ func (a *App) statusBar(c *ui.Context, th theme.Theme) {
 
 // iconButton is a small square button with an icon, for the bars.
 func iconButton(c *ui.Context, key string, svg *ui.SVG, tip string, th theme.Theme) ui.Element {
-	b := ui.Box(c.Key(key)).Size(28, 28).Radius(7).Center().Focusable().FocusRing(false).Cursor(ui.CursorDefault).Tooltip(tip)
+	b := ui.Box(c.Key(key)).Size(28, 28).Radius(7).Center().Focusable().FocusRing(false).Cursor(ui.CursorDefault)
 	if b.Hovered() {
 		b.Background(th.Text.Alpha(0.07))
 	}
 	b.Children(func() { ui.Icon(c, svg).FontSize(16).TextColor(th.Secondary) })
+	if tip != "" {
+		tipBelow(c, b, tip)
+	}
 	return b
+}
+
+// tipBelow shows a tip under e, so a button in the top bar does not cover the
+// window's chrome above the view, as MyGo's own tooltip would.
+func tipBelow(c *ui.Context, e ui.Element, tip string) {
+	t := c.Theme()
+	fill, text := t.Text, t.Background
+	ui.TooltipBase(c, e, func(box ui.Element) {
+		box.MaxWidth(240).Padding(5, 8).Radius(6).Background(fill).TextColor(text)
+		box.Shadow(0, 2, 8, 0, ui.RGBA(0, 0, 0, 0.2))
+		box.AttachTo(e, ui.AnchorBottom, ui.AnchorTop).Margin(6, 0, 0, 0)
+		box.Children(func() { ui.Text(c, tip).FontSize(11.5).TextColor(text) })
+	})
 }
 
 func tabTitle(t *tab) string {
@@ -530,7 +600,10 @@ func (a *App) load(t *tab) {
 	lang := markdown.LanguageForExtension(strings.TrimPrefix(filepath.Ext(t.path), "."))
 	ed := editor.New(strings.TrimPrefix(string(data), "\xef\xbb\xbf"), lang, t.path)
 	ed.Post = func(f func()) { a.post(f) }
-	ed.Hooks = editor.Hooks{Changed: func() { a.edited(t) }}
+	ed.Hooks = editor.Hooks{
+		Changed:  func() { a.edited(t) },
+		LinkFile: func(p string) string { return relativePath(filepath.Dir(t.path), p) },
+	}
 	t.ed = ed
 }
 

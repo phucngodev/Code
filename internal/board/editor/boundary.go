@@ -219,10 +219,13 @@ func (e *Editor) setBracket(s *doc.Shape, pts []geo.Vec) {
 	})
 }
 
-// branchColorOf is the colour of the top-level branch a node belongs to.
+// branchColorOf is the colour of the top-level branch a node belongs to. A
+// cycle through the tree stops at the first node seen again.
 func (e *Editor) branchColorOf(id doc.ID) string {
 	cur := id
-	for {
+	seen := map[doc.ID]bool{}
+	for !seen[cur] {
+		seen[cur] = true
 		p := e.MindmapParent(cur)
 		if p == "" {
 			break

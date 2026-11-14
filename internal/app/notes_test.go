@@ -185,3 +185,18 @@ func TestClosingNotesFreesImages(t *testing.T) {
 		t.Fatalf("%d pictures still cached after close, want 0", got)
 	}
 }
+
+// TestNotesFolderRemembers checks Code keeps the last notes folder and forgets
+// one that is gone.
+func TestNotesFolderRemembers(t *testing.T) {
+	a := testApp(t)
+	dir := t.TempDir()
+	a.saveNotesFolder(dir)
+	if got := a.loadNotesFolder(); got != dir {
+		t.Fatalf("loadNotesFolder = %q, want %q", got, dir)
+	}
+	os.RemoveAll(dir)
+	if got := a.loadNotesFolder(); got != "" {
+		t.Fatalf("loadNotesFolder = %q, want empty for a folder that is gone", got)
+	}
+}

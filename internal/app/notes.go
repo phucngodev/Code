@@ -1,6 +1,10 @@
 package app
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
+
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
@@ -12,9 +16,11 @@ import (
 // notesCanvas is a surface's notes view: the Markdown editor of internal/notes
 // over a folder of notes, shown where a terminal would be.
 type notesCanvas struct {
-	app  *notesapp.App
-	win  *mygo.Window
-	root string
+	app     *notesapp.App
+	win     *mygo.Window
+	root    string
+	owner   *WindowState
+	surface *Surface
 }
 
 // notesHost connects the notes view to the window that shows it.
@@ -28,6 +34,36 @@ func (h *notesHost) Update(fn func()) {
 		return
 	}
 	fn()
+}
+
+// OpenFolder asks for a folder and shows it in place, so the view switches to
+// another folder without opening a second tab.
+func (h *notesHost) OpenFolder() {
+	w, s := h.c.owner, h.c.surface
+	if w == nil || s == nil {
+		return
+	}
+	w.pickNotesFolder(func(root string) {
+		if s.notes != nil {
+			s.notes.close()
+		}
+		s.notes = nil
+		s.dir = root
+	})
+}
+
+// OpenFile asks for a Markdown file, from any folder, and shows it in this
+// view, so a note outside the workspace can be opened on its own.
+func (h *notesHost) OpenFile() {
+	w := h.c.owner
+	if w == nil {
+		return
+	}
+	w.pickNoteFile(func(path string) {
+		if h.c.app != nil {
+			h.c.app.OpenNote(path)
+		}
+	})
 }
 
 // save writes every note with unsaved changes, quietly: a notes view that
@@ -76,7 +112,17 @@ func (w *WindowState) toggleNotes() {
 			return
 		}
 	}
-	// The folder is chosen off the main thread, since the dialog blocks.
+	// The folder opened last is shown again; with none, one is chosen.
+	if dir := w.app.loadNotesFolder(); dir != "" {
+		w.openNotes(dir, ws)
+		return
+	}
+	w.pickNotesFolder(func(root string) { w.openNotes(root, ws) })
+}
+
+// pickNotesFolder asks for a notes folder off the main thread, since the
+// dialog blocks, records it, and runs done with it on the main thread.
+func (w *WindowState) pickNotesFolder(done func(root string)) {
 	go func() {
 		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
 			Parent: w.win, Title: "Open Notes Folder", ButtonLabel: "Open",
@@ -86,8 +132,55 @@ func (w *WindowState) toggleNotes() {
 			return
 		}
 		root := paths[0]
-		mygo.RunOnMain(func() { w.openNotes(root, ws) })
+		mygo.RunOnMain(func() {
+			w.app.saveNotesFolder(root)
+			done(root)
+		})
 	}()
+}
+
+// pickNoteFile asks for a Markdown file off the main thread and runs done with
+// it on the main thread.
+func (w *WindowState) pickNoteFile(done func(path string)) {
+	go func() {
+		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
+			Parent: w.win, Title: "Open Markdown File", ButtonLabel: "Open",
+			Filters: []mygo.FileFilter{{Name: "Markdown", Extensions: []string{"md", "markdown", "mdown", "mkd"}}},
+		})
+		if err != nil || len(paths) == 0 {
+			return
+		}
+		path := paths[0]
+		mygo.RunOnMain(func() { done(path) })
+	}()
+}
+
+// notesFolderPath is where Code remembers the last notes folder between
+// launches.
+func (a *App) notesFolderPath() string {
+	return filepath.Join(filepath.Dir(a.paths.Config), "notes-folder")
+}
+
+// loadNotesFolder is the last notes folder, or "" when there is none or it is
+// gone.
+func (a *App) loadNotesFolder() string {
+	data, err := os.ReadFile(a.notesFolderPath())
+	if err != nil {
+		return ""
+	}
+	dir := strings.TrimSpace(string(data))
+	if dir == "" {
+		return ""
+	}
+	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
+		return ""
+	}
+	return dir
+}
+
+// saveNotesFolder records the folder Code last showed notes from.
+func (a *App) saveNotesFolder(dir string) {
+	_ = os.WriteFile(a.notesFolderPath(), []byte(dir), 0o600)
 }
 
 // openNotes opens the notes view on root in the workspace ws, on the main
@@ -103,7 +196,7 @@ func (w *WindowState) openNotes(root string, ws *model.Workspace[*Surface]) {
 // buildNotes draws a notes view in the terminal area.
 func (w *WindowState) buildNotes(c *ui.Context, s *Surface) {
 	if s.notes == nil {
-		n := &notesCanvas{win: w.win, root: s.dir}
+		n := &notesCanvas{win: w.win, root: s.dir, owner: w, surface: s}
 		n.app = notesapp.New(&notesHost{c: n}, n.root)
 		s.notes = n
 	}

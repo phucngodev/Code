@@ -17,6 +17,8 @@ type testHost struct{}
 
 func (testHost) Window() *mygo.Window { return nil }
 func (testHost) Update(fn func())     { fn() }
+func (testHost) OpenFolder()          {}
+func (testHost) OpenFile()            {}
 
 // newNotes makes a notes view over a folder of two notes.
 func newNotes(t *testing.T) *App {
@@ -152,5 +154,21 @@ func TestNotesShortcutModifiers(t *testing.T) {
 	}
 	if searchMods != ui.Cmd|ui.Alt || commandMods != ui.Cmd|ui.Alt {
 		t.Fatalf("non-macOS modifiers = %v/%v, want Control+Alt", searchMods, commandMods)
+	}
+}
+
+// TestOpenNoteOutsideTheFolder checks a Markdown file from another folder can
+// be opened on its own.
+func TestOpenNoteOutsideTheFolder(t *testing.T) {
+	a := newNotes(t)
+	other := t.TempDir()
+	path := filepath.Join(other, "outside.md")
+	if err := os.WriteFile(path, []byte("# Outside\n\nBody.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a.OpenNote(path)
+	tb := a.tab()
+	if tb == nil || tb.ed == nil || filepath.Base(tb.path) != "outside.md" {
+		t.Fatalf("open outside = %+v", tb)
 	}
 }

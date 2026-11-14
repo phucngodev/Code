@@ -342,16 +342,22 @@ func (e *Editor) layoutTreeAt(root doc.ID, cx, cy float64) float64 {
 	measure := func(id doc.ID) float64 { return e.measureTree(id, heights, onPath) }
 
 	// leaves counts a node's leaf ends, so the two sides can be balanced by
-	// how much tree each carries.
-	var leaves func(id doc.ID) int
-	leaves = func(id doc.ID) int {
+	// how much tree each carries. A cycle, from arrows drawn back up the tree,
+	// is cut rather than recursed into forever.
+	var leaves func(id doc.ID, onPath map[doc.ID]bool) int
+	leaves = func(id doc.ID, onPath map[doc.ID]bool) int {
+		if onPath[id] {
+			return 1
+		}
+		onPath[id] = true
+		defer delete(onPath, id)
 		kids := e.MindmapChildren(id)
 		if len(kids) == 0 {
 			return 1
 		}
 		n := 0
 		for _, k := range kids {
-			n += leaves(k)
+			n += leaves(k, onPath)
 		}
 		return max(1, n)
 	}
@@ -366,12 +372,12 @@ func (e *Editor) layoutTreeAt(root doc.ID, cx, cy float64) float64 {
 	kids := e.MindmapChildren(root)
 	total := 0
 	for _, k := range kids {
-		total += leaves(k)
+		total += leaves(k, map[doc.ID]bool{})
 	}
 	var right, left []side
 	acc := 0
 	for i, k := range kids {
-		w := leaves(k)
+		w := leaves(k, map[doc.ID]bool{})
 		if len(left) == 0 && (i == 0 || 2*acc+w <= total) {
 			right = append(right, side{k, i})
 			acc += w

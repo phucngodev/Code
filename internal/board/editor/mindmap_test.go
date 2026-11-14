@@ -260,3 +260,26 @@ func TestMindmapKeepsAChosenColour(t *testing.T) {
 		t.Fatalf("branch colour = %q, want red after a re-layout", got)
 	}
 }
+
+// TestMindmapCycleDoesNotLoop checks an arrow drawn back up the tree, making a
+// cycle, does not send the layout or a boundary into endless recursion (a
+// stack overflow that would crash the app).
+func TestMindmapCycleDoesNotLoop(t *testing.T) {
+	h := newHarness(t)
+	e := h.Editor
+	root := e.CreateMindmapRoot(geo.V(0, 0))
+	e.StopEditing()
+	child := e.AddMindmapChild(root)
+	labelNode(e, child, "a")
+
+	// An arrow from the child back to the root: a cycle through the tree.
+	e.connect(child, root)
+
+	e.layoutTree(root)    // must return
+	e.RefreshBoundaries() // and this
+
+	e.Select(root, child)
+	e.AddBoundary()
+	e.layoutTree(root)
+	e.RefreshBoundaries()
+}
